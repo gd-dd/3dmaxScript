@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "animation-bake",
+  "name": "动画烘焙工具",
+  "description": "将位移、旋转和缩放按指定采样间隔烘焙。",
+  "host": "3dsmax",
+  "entry": "动画烘焙工具.ms",
+  "version": "131f754d2ee5",
+  "source": {
+    "repository": "gd-dd/3dmaxScript",
+    "commit": "131f754d2ee5abc9e168dbc4e7646ff134cd5e28",
+    "path": "动画烘焙工具.ms"
+  },
+  "sha256": "8a5fd26180e11ee9d9ba10b4cc80c620bb41bc5fe2e76c39397b0cf159936145",
+  "compatibility": {
+    "range": "unverified",
+    "testedVersions": []
+  },
+  "files": {
+    "Nahida.jpg": "637b302925a7d5e41371cb678aa8ca8c0bd071c843218761953ee2a3a572cc04",
+    "动画烘焙工具.ms": "8a5fd26180e11ee9d9ba10b4cc80c620bb41bc5fe2e76c39397b0cf159936145"
+  }
+}

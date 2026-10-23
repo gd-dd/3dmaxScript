@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "material-split",
+  "name": "按材质ID拆分模型",
+  "description": "按材质 ID 拆分模型，整理分部导出。",
+  "host": "3dsmax",
+  "entry": "按材质ID拆分模型.ms",
+  "version": "131f754d2ee5",
+  "source": {
+    "repository": "gd-dd/3dmaxScript",
+    "commit": "131f754d2ee5abc9e168dbc4e7646ff134cd5e28",
+    "path": "按材质ID拆分模型.ms"
+  },
+  "sha256": "8e32252f8db2ce4c3f20f76b8783c44de09ccfe5e7f7f0344ffb365de5cb94fc",
+  "compatibility": {
+    "range": "unverified",
+    "testedVersions": []
+  },
+  "files": {
+    "Nahida.jpg": "637b302925a7d5e41371cb678aa8ca8c0bd071c843218761953ee2a3a572cc04",
+    "按材质ID拆分模型.ms": "8e32252f8db2ce4c3f20f76b8783c44de09ccfe5e7f7f0344ffb365de5cb94fc"
+  }
+}

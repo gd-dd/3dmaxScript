@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "manifest": "releases/unverified/131f754d2ee5/animation-bake/tool.json",
+      "compatibility": {
+        "range": "unverified",
+        "testedVersions": []
+      }
+    },
+    {
+      "manifest": "releases/unverified/131f754d2ee5/keyframe-formula/tool.json",
+      "compatibility": {
+        "range": "unverified",
+        "testedVersions": []
+      }
+    },
+    {
+      "manifest": "releases/unverified/131f754d2ee5/material-split/tool.json",
+      "compatibility": {
+        "range": "unverified",
+        "testedVersions": []
+      }
+    },
+    {
+      "manifest": "releases/unverified/131f754d2ee5/parent-keep-world/tool.json",
+      "compatibility": {
+        "range": "unverified",
+        "testedVersions": []
+      }
+    },
+    {
+      "manifest": "releases/unverified/131f754d2ee5/pmx-import/tool.json",
+      "compatibility": {
+        "range": "unverified",
+        "testedVersions": []
+      }
+    },
+    {
+      "manifest": "releases/unverified/131f754d2ee5/root-cleanup/tool.json",
+      "compatibility": {
+        "range": "unverified",
+        "testedVersions": []
+      }
+    }
+  ]
+}
