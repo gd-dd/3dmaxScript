@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "在工具架内打开和连接多个 Max，再把插件发送到选中的窗口。",
-  "version": "1.1.0",
+  "version": "0.0.1",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -36,12 +36,12 @@
     ".lxtool/panel.json": "7692bf6b7411a17ce635ee3243bcc00f568686e5ecaddf0d0d304d675286fee3",
     ".lxtool/README.md": "8c83022294b45317bbb0e1006d1d49aae479ba1e6b89fcb5ce8c9a537598ba03",
     "bridge/LXMaxBridge.ms": "25c01f54f7355d91f8fb33dfb6bb03dabbd4369ef82eb507a24ac38d124bfae7",
-    "bin/LXMaxSession.exe": "96652d8cc5c41e7fb3af4f84984a2ac0b3ddeb41eea0ea319c81d9eb934bfa29",
+    "bin/LXMaxSession.exe": "fc86552888d341b33d6291d25a374a33669a916ebdd7c384e81570c08c4c6991",
     "ui/panel.py": "181e645fbb2ceb38eb7aecb2d30ca67912080a989c36b43773debfec6b96daca",
     "ui/tools.json": "9e2e145ec29a183e94649081d4b485be67ca581300002e77b0b1252e917c8b3b",
     "ui/transport.py": "2ad7fb6f0ba7b78a72e24c5c59b427aa30abe5b33e6b34f9675305813aea63c4"
   },
-  "releaseNotes": "全新集成面板：打开 Max、连接并选择窗口、运行六款工具；仅跟踪由工具启动的实例，无独立管理窗口。",
-  "publishedAt": "2026-10-24",
+  "releaseNotes": "首次 GitHub Release：Max 工作台、实例连接和六项脚本工具。宿主兼容性仍待实际测试。",
+  "publishedAt": "2026-10-25",
   "minClientVersion": "0.5.0"
 }

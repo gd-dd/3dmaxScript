@@ -134,3 +134,9 @@
 ## 说明
 
 这些脚本是基于日常 3ds Max 工作流整理的工具合集，适合用于快速处理重复任务，便于在建模、绑定、动画和导出环节提升效率。
+
+## 正式版本发布（2026-10-25 起）
+首次 GitHub Release 为 v0.0.1，后续版本严格递增。旧 1.x 为旧索引机制下的开发版本，不再作为商店发行。
+先运行 build.ps1 编译并更新清单摘要，再运行 python scripts/package_release.py；提交源码后打 vX.Y.Z 标签触发 Release 工作流。
+历史可安装包只保存于 GitHub Release 附件，不再维护 .lxtool/releases.json 或仓库 releases/ 副本。
+完整包必须以 LXTool-package.zip 上传，不能打标签后重新编译。
