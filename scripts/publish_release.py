@@ -33,9 +33,6 @@ except urllib.error.HTTPError as error:
     api('POST',f'/repos/{repo}/git/refs',{'ref':'refs/tags/'+tag,'sha':sha})
 releases=api('GET',f'/repos/{repo}/releases?per_page=100')
 release=next((r for r in releases if r['tag_name']==tag),None)
-# Explicit one-time correction requested by the author. Preserve the release page ID.
-if release is None and repo=='gd-dd/LXTools' and version=='0.0.1':
-    release=next((r for r in releases if r['id']==422710822 and r['tag_name']=='v0.5.0'),None)
 if release and release['tag_name']==tag and not release['draft']:
     raise RuntimeError('Version is already published; never overwrite published assets')
 fields={'tag_name':tag,'target_commitish':sha,'name':title,'body':notes,'draft':True,'prerelease':False}
