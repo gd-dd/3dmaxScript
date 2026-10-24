@@ -1,0 +1,90 @@
+{
+  "type": "declarative",
+  "title": "Max 工具集",
+  "accent": "#86ead5",
+  "sections": [
+    {
+      "title": "运行环境",
+      "text": "首次使用请在本面板选择 3dsmax.exe 并填写软件版本。下方按钮按工具定义启动新的 Max 实例。原插件界面保留。",
+      "actions": [
+        {
+          "action": "launch",
+          "label": "启动 3ds Max"
+        }
+      ]
+    },
+    {
+      "title": "动画烘焙工具",
+      "text": "将位移、旋转和缩放按指定采样间隔烘焙。",
+      "actions": [
+        {
+          "action": "animation-bake",
+          "label": "启动 Max 并打开动画烘焙工具"
+        }
+      ]
+    },
+    {
+      "title": "自定义公式关键帧",
+      "text": "通过公式批量调整关键帧。",
+      "actions": [
+        {
+          "action": "keyframe-formula",
+          "label": "启动 Max 并打开自定义公式关键帧"
+        }
+      ]
+    },
+    {
+      "title": "按材质ID拆分模型",
+      "text": "按材质 ID 拆分模型，整理分部导出。",
+      "actions": [
+        {
+          "action": "material-split",
+          "label": "启动 Max 并打开按材质ID拆分模型"
+        }
+      ]
+    },
+    {
+      "title": "保持位移建立父子",
+      "text": "建立父子层级并保持世界空间动画。",
+      "actions": [
+        {
+          "action": "parent-keep-world",
+          "label": "启动 Max 并打开保持位移建立父子"
+        }
+      ]
+    },
+    {
+      "title": "PMX导入",
+      "text": "导入 PMX 模型及相关资源。",
+      "actions": [
+        {
+          "action": "pmx-import",
+          "label": "启动 Max 并打开PMX导入"
+        }
+      ]
+    },
+    {
+      "title": "清理根骨骼",
+      "text": "将根骨骼运动转移到虚拟体。",
+      "actions": [
+        {
+          "action": "root-cleanup",
+          "label": "启动 Max 并打开清理根骨骼"
+        }
+      ]
+    },
+    {
+      "title": "安装与文件",
+      "actions": [
+        {
+          "action": "install",
+          "label": "安装脚本到所选目录"
+        },
+        {
+          "action": "folder",
+          "label": "打开工具包文件夹"
+        }
+      ]
+    }
+  ]
+}

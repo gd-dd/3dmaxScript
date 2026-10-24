@@ -1,0 +1,44 @@
+{
+  "provider": "session-provider",
+  "application": "max",
+  "subtitle": "打开工作空间，连接目标窗口，再运行你的创作工具。",
+  "launchLabel": "+ 打开 Max",
+  "tools": [
+    {
+      "id": "animation-bake",
+      "label": "动画烘焙",
+      "description": "按采样间隔烘焙动画",
+      "group": "动画"
+    },
+    {
+      "id": "keyframe-formula",
+      "label": "公式关键帧",
+      "description": "用公式调整关键帧",
+      "group": "动画"
+    },
+    {
+      "id": "parent-keep-world",
+      "label": "父子层级",
+      "description": "建立层级并保留世界动画",
+      "group": "动画"
+    },
+    {
+      "id": "root-cleanup",
+      "label": "根骨骼约束",
+      "description": "将根骨骼运动烘焙到虚拟体",
+      "group": "动画"
+    },
+    {
+      "id": "material-split",
+      "label": "材质 ID 拆分",
+      "description": "按材质整理模型部件",
+      "group": "模型"
+    },
+    {
+      "id": "pmx-import",
+      "label": "PMX 导入",
+      "description": "导入模型与相关资源",
+      "group": "模型"
+    }
+  ]
+}

@@ -2,8 +2,12 @@
   "schemaVersion": 2,
   "releases": [
     {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "path": ""
+    },
+    {
+      "version": "1.0.1",
+      "path": "releases/unverified/1.0.1"
     },
     {
       "version": "1.0.0",
