@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "动画、建模和导入常用脚本，一处安装与启动。",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -103,10 +103,10 @@
     "按材质ID拆分模型.ms": "8e32252f8db2ce4c3f20f76b8783c44de09ccfe5e7f7f0344ffb365de5cb94fc",
     "清理根骨骼.ms": "634685b30c965ba787da7c5b3c8966aac318e2285d571baa987c4f10602c0cdf",
     "自定义公式关键帧.ms": "fd2fe81684968e762510a48c34b1f24ab64e5af3521b83c95cb5a5f7fcbff59e",
-    ".lxtool/icon.png": "2886515fdcc18e8a592f6578be8781c27d036a34f2dcd6ab1db495f63ad0082d",
+    ".lxtool/icon.png": "ad4088b8e786172e357797ca93f37dc7f5097b509dc99904ef5cae534f56ddeb",
     ".lxtool/panel.json": "ebb0b8dc98bdaf1b33584d7b91ccd0546e1cbe5e6aa68a057e3f1778c3e2c3ad",
     ".lxtool/README.md": "b398f443905de34abe7749ed336408de993aee5837f3ffc59bb2299ab102cf3f"
   },
-  "releaseNotes": "以仓库为一个工具收录六个脚本功能，提供独立面板与介绍。",
+  "releaseNotes": "更新为作者提供的纳西妲抱 3ds Max 图标；六个脚本功能保持不变。",
   "publishedAt": "2026-10-24"
 }
