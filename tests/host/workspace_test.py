@@ -31,6 +31,9 @@ def start():
         for category in ('bones','controls'):
             call('workflow.boxes',category=category,enabled=True);assert all(n.boxMode for n in F.members(category))
             call('workflow.boxes',category=category,enabled=False)
+        for enabled in (False,True):
+            call('workflow.links',enabled=enabled);assert all(bool(n.showLinks)==enabled and not n.showLinksOnly for n in F.members('bones'))
+        report['passed'].append('bone hierarchy links toggle without hiding bone geometry')
         report['passed'].append('category visibility and bounding boxes isolated from unrelated objects')
         for mode in ('wireframe','edges','brackets'):
             for enabled in (True,False):

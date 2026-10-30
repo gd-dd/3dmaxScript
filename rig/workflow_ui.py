@@ -154,6 +154,7 @@ class WorkflowWorkbench(RigWorkbench):
         self.view_buttons={}
         for title,key in [('线框','wireframe'),('边面','edges'),('选择外框','brackets')]:
             button=QPushButton(title);button.setCheckable(True);button.toggled.connect(lambda on,k=key:self.guard(lambda:self.call('viewport.display',{k:on},lambda data:self.load_viewport(data.get('viewport',{})))));view_row.addWidget(button);self.view_buttons[key]=button
+        self.link_button=QPushButton('骨骼连接线');self.link_button.setCheckable(True);self.link_button.setToolTip('显示工作集骨骼的父子层级连线，保留骨骼实体');self.link_button.toggled.connect(lambda on:self.guard(lambda:self.call('workflow.links',{'enabled':on})));view_row.addWidget(self.link_button)
         self.layout().insertLayout(3,view_row)
     def load_viewport(self,data):
         for key,button in getattr(self,'view_buttons',{}).items():
@@ -192,6 +193,8 @@ class WorkflowWorkbench(RigWorkbench):
             group=[n for n in self.nodes if n.get('workflow')==category];visible=not group or any(not n.get('hidden') for n in group)
             button.blockSignals(True);button.setChecked(visible);button.setText(title+(' 显示' if visible else ' 隐藏'));button.blockSignals(False)
             box=self.box_buttons[category];box.blockSignals(True);box.setChecked(bool(group) and all(n.get('boxMode') for n in group));box.blockSignals(False)
+        bones=[n for n in self.nodes if n.get('workflow')=='bones']
+        self.link_button.blockSignals(True);self.link_button.setChecked(bool(bones) and all(n.get('showLinks') for n in bones));self.link_button.blockSignals(False)
         for n in self.nodes:
             self.align_target.addItem(n['name'],n['id'])
             if n.get('workflow'):self.roster.addTopLevelItem(QTreeWidgetItem([n['name'],{'models':'模型','bones':'骨骼','controls':'控制器'}.get(n['workflow'],n['workflow'])]))

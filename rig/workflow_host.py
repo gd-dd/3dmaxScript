@@ -56,6 +56,14 @@ def boxes(p):
             if previous:n.displayByLayer=previous=='true';rt.setUserProp(n,'LXPreviousDisplayByLayer','')
     return {'message':'%d 个对象%s包围框显示'%(len(nodes),'开启' if on else '关闭')}
 
+@H.command('workflow.links',True)
+def links(p):
+    nodes=members('bones');on=bool(p['enabled'])
+    for n in nodes:
+        n.showLinksOnly=False;n.showLinks=on
+    rt.completeRedraw()
+    return {'message':'骨骼层级连接线已'+('显示' if on else '隐藏')}
+
 def viewport_state():
     if not rt.NitrousGraphicsManager.IsEnabled():return {}
     settings=rt.NitrousGraphicsManager.GetActiveViewportSetting()
@@ -79,7 +87,7 @@ def create_humanoid(p):
     rt.setUserProp(center,'LXRigId',rig_id);center.wireColor=rt.Color(134,184,61)
     for spec in specs:
         result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=0 if spec['role']=='Pelvis' else .15
-        free_bone(b);mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
+        free_bone(b);b.showLinks=True;b.showLinksOnly=False;mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
         if spec['chain']:rt.setUserProp(b,'LXChain',spec['chain'])
         b.parent=created[spec['parent']] if spec['parent'] else center
         free_bone(b);created[spec['role']]=b

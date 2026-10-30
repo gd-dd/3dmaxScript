@@ -65,7 +65,8 @@ try:
  rt.fileIn(str(ROOT/'rig/viewport_tools.ms'));report['passed'].append('viewport placement tool compiles')
  report['passed'].append('brush changes weights and one-step undo restores')
  from rig import max_ui,workflow_ui,workbench
- if max_ui._dock is not None:max_ui._dock.close()
+ from shiboken6 import isValid
+ if max_ui._dock is not None and isValid(max_ui._dock):max_ui._dock.close()
  importlib.reload(workbench);importlib.reload(workflow_ui);importlib.reload(max_ui)
  dock=max_ui.show_workbench();dock.workbench.load_scene(H.inspect_scene({}));dock.workbench.steps.setCurrentIndex(1)
  import qtmax
