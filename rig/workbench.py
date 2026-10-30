@@ -5,6 +5,13 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabe
     QTreeWidgetItem,QAbstractItemView,QCheckBox,QFileDialog,QScrollArea,QFrame,QHeaderView,QGridLayout)
 
 
+class WheelSafeSpinBox(QSpinBox):
+    def wheelEvent(self,event):event.ignore()
+
+class WheelSafeDoubleSpinBox(QDoubleSpinBox):
+    def wheelEvent(self,event):event.ignore()
+
+
 class RigWorkbench(QWidget):
     def __init__(self, owner):
         super().__init__();self.owner=owner;self.session=None;self.scene=None;self.nodes=[];self.profile={};self.busy=False
@@ -79,9 +86,9 @@ class RigWorkbench(QWidget):
         try:fn()
         except Exception as e:self.notice.setText(str(e))
     def number(self,low,high,value,step):
-        w=QDoubleSpinBox();w.setDecimals(6);w.setRange(low,high);w.setValue(value);w.setSingleStep(step);return w
+        w=WheelSafeDoubleSpinBox();w.setDecimals(6);w.setRange(low,high);w.setValue(value);w.setSingleStep(step);return w
     def integer(self,low,high,value):
-        w=QSpinBox();w.setRange(low,high);w.setValue(value);return w
+        w=WheelSafeSpinBox();w.setRange(low,high);w.setValue(value);return w
     def set_target(self,session):
         if session!=self.session:
             self.session=session;self.scene=None;self.nodes=[];self.mesh.clear();self.tree.clear();self.busy=False;self.notice.setText('当前场景已改变，请读取场景。')

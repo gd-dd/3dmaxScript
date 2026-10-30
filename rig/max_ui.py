@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QDockWidget,QWidget,QVBoxLayout,QHBoxLayout,QLabel
 from pymxs import runtime as rt
 import qtmax
 from .max_host import dispatch
-from .workbench import RigWorkbench
+from .workflow_ui import WorkflowWorkbench as RigWorkbench
 
 ROOT=Path(__file__).resolve().parents[1]
 _dock=None
@@ -22,12 +22,13 @@ class RigDock(QDockWidget):
         content=QWidget();content.setFont(QFont('Microsoft YaHei UI',9));self.setWidget(content)
         layout=QVBoxLayout(content);layout.setContentsMargins(10,10,10,10)
         header=QHBoxLayout();icon=QLabel();icon.setPixmap(QPixmap(str(ROOT/'.lxtool/icon.png')).scaled(52,52,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));header.addWidget(icon)
-        title=QLabel('LX 绑定蒙皮\n骨骼 · 权重 · 人形 · 表情');title.setStyleSheet('font-size:15px;font-weight:600;color:#bddc93');header.addWidget(title,1);layout.addLayout(header)
+        title=QLabel('LX 绑定蒙皮\n骨骼 · 权重 · 人形 · 表情');title.setStyleSheet('font-size:15px;font-weight:600;color:#507522');header.addWidget(title,1);layout.addLayout(header)
         self.workbench=RigWorkbench(self);layout.addWidget(self.workbench,1)
         self.workbench.set_target(self.scene_token);self.workbench.notice.setText('直接操作当前 Max 场景。请读取场景并选择模型。')
-        content.setStyleSheet('QWidget {color:#e5e9e0;} QLabel {background:transparent;} QPushButton {background:#394437;border:1px solid #57674e;border-radius:5px;padding:7px;} QPushButton:hover {background:#4b603d;} QPushButton:disabled {color:#858c80;} QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox {background:#30342e;border:1px solid #515a48;border-radius:3px;padding:4px;} QTreeWidget {background:#2c302a;alternate-background-color:#343a30;} QTreeWidget::item:selected {background:#506b3b;} QTabWidget::pane {border:1px solid #515a48;} QTabBar::tab {padding:7px;background:#30362c;} QTabBar::tab:selected {background:#506b3b;}')
+        from .theme import STYLE,apply_popup_palette
+        content.setStyleSheet(STYLE);apply_popup_palette(content)
         content.setAutoFillBackground(True)
-        palette=content.palette();palette.setColor(content.backgroundRole(),'#272c25');content.setPalette(palette)
+        palette=content.palette();palette.setColor(content.backgroundRole(),'#FFFFFF');content.setPalette(palette)
         self.setMinimumWidth(520)
         qtmax.DisableMaxAcceleratorsOnFocus(self,True)
         self.scene_timer=QTimer(self);self.scene_timer.setInterval(500);self.scene_timer.timeout.connect(self.check_scene);self.scene_timer.start()
@@ -37,7 +38,8 @@ class RigDock(QDockWidget):
     def check_scene(self):
         token=str(rt.LXRigSceneToken)
         if token!=self.scene_token:
-            self.scene_token=token;self.queue.clear();self.workbench.set_target(token)
+            from .brush import stop
+            stop();self.scene_token=token;self.queue.clear();self.workbench.set_target(token)
             self.workbench.notice.setText('Max 场景已切换，请重新读取场景。')
     def refresh_scene(self):
         if not self.closed:
@@ -59,6 +61,8 @@ class RigDock(QDockWidget):
         item=self.queue.pop(params.get('requestId'),None)
         if item:item[1]({'ok':False,'error':'尚未开始的操作已取消。'})
     def closeEvent(self,event):
+        from .brush import stop
+        stop()
         self.closed=True;self.queue.clear();self.scene_timer.stop();super().closeEvent(event)
 
 def show_workbench():

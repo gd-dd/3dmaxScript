@@ -10,3 +10,4 @@ __pycache__/
 /tests/host/harness.ms
 /tests/host/trigger*
 /tests/host/job.json
+/tests/host/job-*.json

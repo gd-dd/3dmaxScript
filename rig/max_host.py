@@ -30,6 +30,8 @@ def mesh(p):
 
 def skin(obj,p):
     index=int(p.get('skin',0))
+    if p.get('skinHandle'):
+        index=next((i for i,m in enumerate(obj.modifiers) if handle(m)==str(p['skinHandle'])),-1)
     if index<0 or index>=len(obj.modifiers) or cls(obj.modifiers[index])!='Skin':raise ValueError('Skin 已变化，请重新选择修改器')
     s=obj.modifiers[index]
     if p.get('skinHandle') and p['skinHandle']!=handle(s):raise ValueError('Skin 实例已替换，请刷新场景')
@@ -78,12 +80,15 @@ def selected_vertices(s,p,count):
     if not result:raise ValueError('没有选中顶点；请从 Max 选择 Skin 顶点，或显式选择全部顶点')
     return result
 
-def write_rows(s,rows,indices=None):
+def write_rows(s,rows,indices=None,record_history=True):
     bones={b['id'] for b in influences(s)}
     indices=list(range(len(rows))) if indices is None else list(indices)
     for i in indices:
         row=rows[i]
         if not row or any(k not in bones for k in row) or any(not math.isfinite(v) or v<0 for v in row.values()) or abs(sum(row.values())-1)>1e-5:raise ValueError('待写入权重无效，已阻止修改')
+    if record_history:
+        from . import history
+        history.prepare(s,read_rows(s))
     for i in indices:
         row=rows[i];keys=sorted(row,key=int)
         rt.skinOps.ReplaceVertexWeights(s,i+1,arr([int(k) for k in keys]),arr([float(row[k]) for k in keys]))
@@ -91,6 +96,7 @@ def write_rows(s,rows,indices=None):
     for i in indices:
         actual={str(int(rt.skinOps.GetVertexWeightBoneID(s,i+1,j))):float(rt.skinOps.GetVertexWeight(s,i+1,j)) for j in range(1,int(rt.skinOps.GetVertexWeightCount(s,i+1))+1)}
         if any(abs(actual.get(k,0)-rows[i].get(k,0))>2e-5 for k in set(actual)|set(rows[i])):raise RuntimeError('顶点 %d 权重读回不一致，将撤销本次操作：%s != %s'%(i+1,actual,rows[i]))
+    if record_history:history.commit(s,read_rows(s))
 
 def profile(obj,s=None):
     raw=rt.getUserProp(obj,'LXRigProfile')
@@ -126,7 +132,7 @@ def inspect_scene(p):
     if len(nodes)>10000:raise ValueError('场景对象超过 10000，请在简化场景中操作')
     result=[]
     for n in nodes:
-        result.append({'id':handle(n),'name':str(n.name),'class':cls(n),'parent':handle(n.parent) if n.parent else None,'position':vec(n.pos),'geometry':rt.superClassOf(n)==rt.GeometryClass,'bone':bool(getattr(n,'isBone',False)) or 'Bone' in cls(n) or rt.superClassOf(n)==rt.Helper,'selected':bool(n.isSelected),'skins':[{'index':i,'name':str(m.name),'handle':handle(m)} for i,m in enumerate(n.modifiers) if cls(m)=='Skin']})
+        result.append({'id':handle(n),'name':str(n.name),'class':cls(n),'parent':handle(n.parent) if n.parent else None,'position':vec(n.pos),'geometry':rt.superClassOf(n)==rt.GeometryClass and cls(n)!='BoneGeometry' and not bool(getattr(n,'isBone',False)),'bone':bool(getattr(n,'isBone',False)) or 'Bone' in cls(n) or rt.superClassOf(n)==rt.Helper,'hidden':bool(n.isHidden),'workflow':str(rt.getUserProp(n,'LXWorkflow') or ''),'selected':bool(n.isSelected),'skins':[{'index':i,'name':str(m.name),'handle':handle(m)} for i,m in enumerate(n.modifiers) if cls(m)=='Skin']})
     return {'scene':str(rt.LXRigSceneToken),'nodes':result,'capabilities':list(COMMANDS),'maxVersion':list(rt.maxVersion())[:3]}
 
 @command('nodes.select')
@@ -376,6 +382,9 @@ def dispatch(request):
     if action not in COMMANDS or not isinstance(params,dict):raise ValueError('不支持的工作台命令')
     fn,write=COMMANDS[action]
     if action!='scene.inspect' and request.get('scene')!=str(rt.LXRigSceneToken):raise ValueError('场景已切换，请刷新后重试')
+    if action not in ('brush.stop','scene.inspect'):
+        from . import brush
+        if brush._active is not None:raise ValueError('请先退出权重笔刷再执行其他操作')
     if not write:return fn(params)
     if rt.theHold.Holding():raise ValueError('Max 正在处理其他撤销事务，请稍后重试')
     failure=None;result=None
@@ -389,3 +398,7 @@ def dispatch(request):
             raise
     if failure is not None:raise failure
     rt.redrawViews();return result
+
+# Extensions register typed commands without coupling the original adapter to UI.
+from . import workflow_host
+from . import brush
