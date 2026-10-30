@@ -20,7 +20,7 @@ if repo=='gd-dd/LXTools':
 else:
     manifest=json.loads(Path('.lxtool/manifest.json').read_text('utf-8-sig'));version=manifest['version']
     names=['LXTool-package.zip','SHA256SUMS.txt'];title=manifest['name']+' v'+version
-    notes=manifest.get('releaseNotes','')+'\n\n通过 LXTools 商店安装，宿主兼容性待实测。'
+    notes=manifest.get('releaseNotes','')+'\n\n通过 LXTools 商店安装或更新。兼容范围和功能限制见工具介绍。'
 assets=[Path('dist')/n for n in names]
 for asset in assets:
     if not asset.is_file():raise RuntimeError('Missing asset: '+str(asset))

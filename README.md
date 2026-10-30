@@ -2,7 +2,18 @@
 
 这是一个面向 3ds Max 的脚本集合，主要用于常见的建模、动画、骨骼处理与关键帧编辑工作流。
 
-这些脚本都以 MaxScript 形式编写，通常直接拖入 3ds Max 视口或通过“脚本 → 运行脚本”执行即可。
+原有六项脚本以 MaxScript 编写，可拖入 Max 或通过「脚本 → 运行脚本」执行。新增的绑定蒙皮工作台通过 LX 工具架原生面板操作，不是拖入运行的单个脚本。
+
+## 绑定蒙皮工作台（v0.0.2）
+
+在同一面板中完成通用骨骼与 Skin 绑定、权重编辑/平滑/镜像/传递/交换、快照恢复、人形与面部映射、Morpher 表情管理，沿用用户提供的图标。
+
+- [使用流程及已知边界](.lxtool/README.md)
+- [架构与扩展接口](docs/rig-extension-api.md)
+- [方案调研](docs/rig-skin-workbench-plan.md)
+- [验证记录](docs/rig-validation.md)
+
+v0.0.2 发布绑定蒙皮工作台。通过 GitHub Release 附件 `LXTool-package.zip` 分发；从 LX 工具架商店更新后使用。
 
 ## 目录
 

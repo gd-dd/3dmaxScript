@@ -4,6 +4,13 @@ global LXMaxBridgeRoot
 global LXMaxBridgeSession
 global LXMaxBridgeBusy = false
 global LXMaxBridgeSource
+global LXRigPayload
+global LXRigResponse
+global LXRigResultPath
+global LXRigSceneToken = ((dotNetClass "System.Guid").NewGuid()).ToString()
+callbacks.removeScripts id:#LXRigScene
+for event in #(#filePostOpen, #systemPostNew, #systemPostReset) do
+    callbacks.addScript event "LXRigSceneToken = ((dotNetClass \"System.Guid\").NewGuid()).ToString()" id:#LXRigScene
 try (if LXMaxBridgeTimer != undefined do LXMaxBridgeTimer.Stop()) catch()
 LXMaxBridgeSource = getSourceFileName()
 LXMaxBridgeRoot = (dotNetClass "System.IO.Path").GetFullPath ((getFilenamePath LXMaxBridgeSource) + "..")
@@ -75,13 +82,23 @@ fn LXMaxBridgeTick =
                     local response = "OK"
                     try
                     (
-                        if lines.count != 2 do throw "Invalid request"
+                        if lines.count != 2 and lines.count != 3 do throw "Invalid request"
                         local expires = (dotNetClass "System.Int64").Parse lines[2]
                         if (dotNetClass "System.DateTime").UtcNow.Ticks > expires do throw "Request expired"
-                        LXMaxBridgeRun lines[1]
+                        if lines[1] == "rig" then
+                        (
+                            if lines.count != 3 do throw "Missing rig payload"
+                            LXRigPayload = lines[3]
+                            LXRigResponse = undefined
+                            LXRigResultPath = request + ".result"
+                            undo off (python.ExecuteFile (LXMaxBridgeRoot + "\\bridge\\rig_entry.py"))
+                            if LXRigResponse == undefined do throw "Rig bridge failed; see Max Python listener"
+                            response = undefined
+                        )
+                        else LXMaxBridgeRun lines[1]
                     )
                     catch (response = "ERROR\n" + (LXMaxBridgeEncode (getCurrentException() as string)))
-                    LXMaxBridgeWrite (request + ".result") response
+                    if response != undefined do LXMaxBridgeWrite (request + ".result") response
                     io.Delete working
                 ) catch (format "LX Max bridge request failed: %\n" (getCurrentException()))
             )

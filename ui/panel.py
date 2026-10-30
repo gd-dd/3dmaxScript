@@ -5,9 +5,10 @@ from pathlib import Path
 from PySide6.QtCore import QProcess, QTimer, Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QFrame, QLineEdit, QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView)
-from PySide6.QtWidgets import QPushButton, QScrollArea
-from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QPushButton, QScrollArea, QTabWidget
+from PySide6.QtGui import QPixmap, QFont
 from .transport import HiddenProcess
+from .rig_workbench import RigWorkbench
 
 
 def plain(text, style=''):
@@ -19,6 +20,7 @@ def plain(text, style=''):
 class MaxPanel(QWidget):
     def __init__(self, context, parent=None):
         super().__init__(parent)
+        self.setFont(QFont('Microsoft YaHei UI',10))
         self.context=context
         spec=json.loads(context.resource('ui/tools.json').read_text('utf-8'))
         tool={'root':context.package_root,'name':'Max 工作台','panelData':{'title':'Max 工作台'},'applications':{'max':{'name':'3ds Max','executable':'3dsmax.exe'}}}
@@ -26,7 +28,7 @@ class MaxPanel(QWidget):
         self.tool,self.spec,self.settings,self.save_settings=tool,spec,settings,context.save_settings
         self.setStyleSheet('QFrame#card {background:#ffffff;border:1px solid #e2e9d8;border-radius:14px;} QPushButton {background:#f6f9ef;border:1px solid #dfe8d0;border-radius:9px;padding:10px 16px;color:#35532d;} QPushButton:hover {background:#eaf2d9;border-color:#a6bf7a;} QPushButton:disabled {color:#a0a69a;background:#f5f5f1;} QPushButton#primary {background:#89b851;color:white;font-weight:600;border:0;} QLineEdit {border:1px solid #e0e6d8;border-radius:6px;padding:7px;background:#fafbf7;} QTreeWidget {border:0;background:#ffffff;} QTreeWidget::item {padding:9px;} QTreeWidget::item:selected {background:#e7f0d8;color:#304927;}')
         self.process=HiddenProcess(self);self.buffer=bytearray();self.requests={};self.queued=[]
-        self.sessions={};self.pending=set();self.buttons={};self.active_id=None
+        self.sessions={};self.pending=set();self.buttons={};self.active_id=None;self.rig_callbacks={}
         self.process.readyReadStandardOutput.connect(self.read_output)
         self.process.readyReadStandardError.connect(self.read_error)
         self.process.started.connect(self.provider_started)
@@ -44,7 +46,8 @@ class MaxPanel(QWidget):
         title=QVBoxLayout();title.addWidget(plain(tool['panelData'].get('title',tool['name']), 'font-size:25px;font-weight:700;color:#304927'))
         title.addWidget(plain(spec.get('subtitle','打开应用，选择连接，再运行工具。'),'color:#777777'))
         header.addLayout(title,1);self.counter=plain('尚未连接','color:#507522;font-weight:600');header.addWidget(self.counter);outer.addLayout(header)
-        launch,box=self.section('01','打开 Max');outer.addWidget(launch)
+        connection_row=QHBoxLayout();outer.addLayout(connection_row)
+        launch,box=self.section('01','打开 Max');connection_row.addWidget(launch,1)
         row=QHBoxLayout();self.path=QLineEdit(settings.get(spec['application'],{}).get('path',''))
         self.path.setReadOnly(True);self.path.setPlaceholderText('先选择 '+tool['applications'][spec['application']]['executable'])
         self.path.setMinimumWidth(200);row.addWidget(self.path,1)
@@ -52,11 +55,11 @@ class MaxPanel(QWidget):
         row=QHBoxLayout();self.launch_button=self.button(spec.get('launchLabel','打开应用'),self.launch,True)
         row.addWidget(self.launch_button);self.connect_button=self.button('连接 / 刷新',lambda:self.command('hello'))
         row.addWidget(self.connect_button);row.addStretch();box.addLayout(row)
-        connections,box=self.section('02','选择已连接窗口');outer.addWidget(connections)
+        connections,box=self.section('02','选择已连接窗口');connection_row.addWidget(connections,1)
         self.empty=plain('还没有连接的窗口。点击上方“打开”，就绪后会自动出现在这里。','color:#777777;padding:12px 0')
         box.addWidget(self.empty)
         self.list=QTreeWidget();self.list.setHeaderLabels(['窗口','连接状态']);self.list.setRootIsDecorated(False)
-        self.list.setMinimumHeight(100);self.list.setMaximumHeight(170);self.list.setColumnCount(2)
+        self.list.setFixedHeight(110);self.list.setColumnCount(2)
         self.list.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
         self.list.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents)
         self.list.currentItemChanged.connect(self.selection_changed);box.addWidget(self.list);self.list.hide()
@@ -69,7 +72,9 @@ class MaxPanel(QWidget):
             button.setMinimumHeight(72);button.setStyleSheet('text-align:left;padding:12px 16px;')
             button.setToolTip(item.get('group','')+' · '+item.get('description',item['label']));button.setEnabled(False)
             self.buttons[item['id']]=button;grid.addWidget(button,index//2,index%2)
-        box.addLayout(grid)
+        grid.setRowStretch(3,1)
+        pages=QTabWidget();pages.setMinimumHeight(680);legacy=QWidget();legacy.setLayout(grid);pages.addTab(legacy,'脚本工具')
+        self.rig=RigWorkbench(self);pages.addTab(self.rig,'绑定蒙皮工作台');box.addWidget(pages)
         self.status=plain('准备就绪。打开应用后，连接将自动建立。','color:#777777;padding:8px 0')
         outer.addWidget(self.status);outer.addStretch()
         # Merely rendering a panel must never launch provider or host processes.
@@ -117,6 +122,7 @@ class MaxPanel(QWidget):
                 self.status.setText('正在连接工具后台…')
             elif self.process.state()==QProcess.ProcessState.Starting:self.queued.append(payload)
             else:self.send(payload)
+            return payload['id']
         except Exception as error:self.fail(str(error))
 
     def send(self,payload):
@@ -133,11 +139,13 @@ class MaxPanel(QWidget):
 
     def read_error(self):
         message=bytes(self.process.readAllStandardError()).decode('utf-8',errors='replace').strip()
-        if message:self.fail(message[:2000])
+        # Max may inherit stderr and emit ordinary assembly diagnostics.
+        # Keep those separate from the structured operation result.
+        if message:self.last_backend_diagnostic=message[-2000:]
 
     def read_output(self):
         self.buffer.extend(bytes(self.process.readAllStandardOutput()))
-        if len(self.buffer)>1024*1024:self.fail('后台响应超过限制');self.shutdown();return
+        if len(self.buffer)>32*1024*1024:self.fail('后台响应超过限制');self.shutdown();return
         while b'\n' in self.buffer:
             line,_,rest=self.buffer.partition(b'\n');self.buffer=bytearray(rest)
             try:
@@ -145,7 +153,11 @@ class MaxPanel(QWidget):
                 if not isinstance(value,dict) or value.get('protocol')!=1 or value.get('id') not in self.requests:raise ValueError('后台响应协议无效')
                 op=self.requests.pop(value['id'])
                 if not self.requests:self.watchdog.stop()
-                if not value.get('ok'):self.fail(str(value.get('error','操作失败')));continue
+                if not value.get('ok'):
+                    self.fail(str(value.get('error','操作失败')))
+                    callback=self.rig_callbacks.pop(value['id'],None)
+                    if callback:callback(value)
+                    continue
                 self.apply_response(value)
                 if op=='hello' and not value.get('events'):self.status.setText('连接列表已刷新。')
             except (ValueError,KeyError,TypeError) as error:self.fail(str(error))
@@ -160,7 +172,7 @@ class MaxPanel(QWidget):
             if any(not isinstance(item.get(k,''),str) or len(item.get(k,''))>4096 for k in ('id','title','detail','status')):raise ValueError('后台会话文字无效')
         pending=value.get('pending',[])
         if not isinstance(pending,list) or len(pending)>100:raise ValueError('后台待处理列表无效')
-        if any(not isinstance(p,dict) or not isinstance(p.get('sessionId'),str) or p.get('toolId') not in self.buttons for p in pending):raise ValueError('后台待处理操作无效')
+        if any(not isinstance(p,dict) or not isinstance(p.get('sessionId'),str) or p.get('toolId') not in (*self.buttons,'rig') for p in pending):raise ValueError('后台待处理操作无效')
         self.pending={(p['sessionId'],p['toolId']) for p in pending}
         self.sessions={s['id']:s for s in sessions};selected=self.active_id
         self.list.blockSignals(True);self.list.clear()
@@ -180,11 +192,15 @@ class MaxPanel(QWidget):
         events=value.get('events',[])
         if not isinstance(events,list) or any(not isinstance(e,str) for e in events):raise ValueError('后台事件无效')
         if events:self.status.setText('\n'.join(events[-3:])[:2000])
+        for result in value.get('results',[]):
+            callback=self.rig_callbacks.pop(result['requestId'],None)
+            if callback:callback(result['result'])
 
     def selection_changed(self,item,*_):
         self.active_id=item.data(0,Qt.ItemDataRole.UserRole) if item else None
         session=self.sessions.get(self.active_id,{})
         self.target.setText('目标：'+session.get('detail','') if session else '先选择一个已连接窗口')
+        self.rig.set_target(self.active_id if session else None)
         for identity,button in self.buttons.items():button.setEnabled(session.get('state')=='ready' and (self.active_id,identity) not in self.pending)
 
     def run_tool(self,identity):
@@ -194,13 +210,22 @@ class MaxPanel(QWidget):
 
     def fail(self,message):self.status.setText(message)
 
+    def rig_command(self,request,callback):
+        identity=self.command('rig',sessionId=self.active_id,request=request)
+        if identity:self.rig_callbacks[identity]=callback
+        else:callback({'ok':False,'error':self.status.text()})
+        return identity
+
     def timed_out(self):
         self.fail('工具后台未响应。请点击“连接 / 刷新”重连；已打开的应用不会被关闭。')
         self.shutdown()
 
     def provider_finished(self,*_):
+        callbacks=list(self.rig_callbacks.values());self.rig_callbacks.clear()
+        for callback in callbacks:callback({'ok':False,'error':'后台连接已断开，请重新连接并刷新场景。'})
         self.timer.stop();self.watchdog.stop();self.requests.clear();self.queued.clear();self.buffer.clear()
         self.sessions={};self.pending=set();self.list.clear();self.list.hide();self.empty.show();self.counter.setText('尚未连接');self.selection_changed(None)
+        if _ and _[0]:self.fail(getattr(self,'last_backend_diagnostic','工具后台已退出，请重新连接。'))
 
     def shutdown(self):
         self.timer.stop();self.watchdog.stop();self.queued.clear();self.process.closeWriteChannel()

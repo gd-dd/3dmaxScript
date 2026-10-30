@@ -1,3 +1,10 @@
 /dist/
 __pycache__/
 *.pyc
+/tests/*-report.json
+/tests/*.png
+/tests/host/report.json
+/tests/host/weights.json
+/tests/host/boot.ms
+/tests/host/harness.ms
+/tests/host/trigger*

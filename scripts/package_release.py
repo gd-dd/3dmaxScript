@@ -10,7 +10,10 @@ for path,digest in m['files'].items():
     if hashlib.sha256(p.read_bytes()).hexdigest()!=digest:raise ValueError('File changed after manifest was prepared: '+path)
 out=root/'dist';out.mkdir(exist_ok=True)
 with zipfile.ZipFile(out/'LXTool-package.zip','w',zipfile.ZIP_DEFLATED) as z:
-    for path in ['.lxtool/manifest.json',*sorted(m['files'])]:z.write(root/path,path)
+    for path in ['.lxtool/manifest.json',*sorted(m['files'])]:
+        entry=zipfile.ZipInfo(path,date_time=(1980,1,1,0,0,0))
+        entry.create_system=3;entry.external_attr=0o100644 << 16
+        z.writestr(entry,(root/path).read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
 h=hashlib.sha256((out/'LXTool-package.zip').read_bytes()).hexdigest()
 (out/'SHA256SUMS.txt').write_text(h+'  LXTool-package.zip\n',encoding='ascii')
 print('Prepared v'+m['version']+'; SHA256 '+h)
