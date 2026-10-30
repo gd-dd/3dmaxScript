@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, Q
 from PySide6.QtWidgets import QPushButton, QScrollArea
 from PySide6.QtGui import QPixmap, QFont
 from .transport import HiddenProcess
+from . import max_connection
+from PySide6.QtWidgets import QMessageBox,QApplication
 
 
 def plain(text, style=''):
@@ -21,6 +23,7 @@ class MaxPanel(QWidget):
         super().__init__(parent)
         self.setFont(QFont('Microsoft YaHei UI',10))
         self.context=context
+        max_connection.refresh_install("max-tools",context.resource("bridge/LXMaxBridge.ms"))
         spec=json.loads(context.resource('ui/tools.json').read_text('utf-8'))
         tool={'root':context.package_root,'name':'Max 工作台','panelData':{'title':'Max 工作台'},'applications':{'max':{'name':'3ds Max','executable':'3dsmax.exe'}}}
         settings=context.load_settings()
@@ -54,15 +57,17 @@ class MaxPanel(QWidget):
         row=QHBoxLayout();self.launch_button=self.button(spec.get('launchLabel','打开应用'),self.launch,True)
         row.addWidget(self.launch_button);self.connect_button=self.button('连接 / 刷新',lambda:self.command('hello'))
         row.addWidget(self.connect_button);row.addStretch();box.addLayout(row)
-        connections,box=self.section('02','选择已连接窗口');connection_row.addWidget(connections,1)
-        self.empty=plain('还没有连接的窗口。点击上方“打开”，就绪后会自动出现在这里。','color:#777777;padding:12px 0')
+        connections,box=self.section('02','选择 Max 窗口');connection_row.addWidget(connections,1)
+        self.empty=plain('未发现 Max 窗口。可手动打开 Max，或使用左侧打开按钮。','color:#777777;padding:12px 0')
         box.addWidget(self.empty)
         self.list=QTreeWidget();self.list.setHeaderLabels(['窗口','连接状态']);self.list.setRootIsDecorated(False)
         self.list.setFixedHeight(110);self.list.setColumnCount(2)
         self.list.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
         self.list.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents)
         self.list.currentItemChanged.connect(self.selection_changed);box.addWidget(self.list);self.list.hide()
-        box.addWidget(plain('仅显示由此工具打开的窗口。连接列表可在工具架重启后恢复。','color:#777777;font-size:12px'))
+        box.addWidget(plain('显示所有 Max；只向选中的已连接窗口发送操作。','color:#777777;font-size:12px'))
+        box.addWidget(self.button('安装自动连接组件',self.install_connection))
+        box.addWidget(self.button('连接当前已打开窗口',self.connection_help))
         tools,box=self.section('03','在选中窗口中打开工具');outer.addWidget(tools)
         self.target=plain('先选择一个已连接窗口','color:#507522');box.addWidget(self.target)
         grid=QGridLayout();grid.setSpacing(10)
@@ -162,7 +167,7 @@ class MaxPanel(QWidget):
         if not isinstance(sessions,list) or len(sessions)>100:raise ValueError('后台会话列表无效')
         seen=set()
         for item in sessions:
-            if not isinstance(item,dict) or not isinstance(item.get('id'),str) or item['id'] in seen or item.get('state') not in ('ready','connecting','busy'):raise ValueError('后台会话无效')
+            if not isinstance(item,dict) or not isinstance(item.get('id'),str) or item['id'] in seen or item.get('state') not in ('ready','connecting','busy','unconnected'):raise ValueError('后台会话无效')
             seen.add(item['id'])
             if any(not isinstance(item.get(k,''),str) or len(item.get(k,''))>4096 for k in ('id','title','detail','status')):raise ValueError('后台会话文字无效')
         pending=value.get('pending',[])
@@ -172,13 +177,10 @@ class MaxPanel(QWidget):
         self.sessions={s['id']:s for s in sessions};selected=self.active_id
         self.list.blockSignals(True);self.list.clear()
         for s in sessions:
-            state={'ready':'● 已连接','connecting':'◌ 正在连接','busy':'○ 忙碌 / 未响应'}[s['state']]
+            state={'ready':'● 已连接','connecting':'◌ 正在连接','busy':'○ 忙碌 / 未响应','unconnected':'○ 尚未连接'}[s['state']]
             item=QTreeWidgetItem([s.get('title','窗口')+'\n'+s.get('detail',''),state]);item.setData(0,Qt.ItemDataRole.UserRole,s['id'])
             item.setToolTip(0,s.get('detail',''));self.list.addTopLevelItem(item)
             if s['id']==selected:self.list.setCurrentItem(item)
-        if self.list.currentItem() is None:
-            ready=next((self.list.topLevelItem(i) for i,s in enumerate(sessions) if s['state']=='ready'),None)
-            if ready:self.list.setCurrentItem(ready)
         self.list.blockSignals(False);self.selection_changed(self.list.currentItem())
         self.list.setVisible(bool(sessions));self.empty.setVisible(not sessions)
         self.counter.setText(str(len(sessions))+' 个窗口 · '+str(sum(s['state']=='ready' for s in sessions))+' 个已连接')
@@ -187,6 +189,16 @@ class MaxPanel(QWidget):
         events=value.get('events',[])
         if not isinstance(events,list) or any(not isinstance(e,str) for e in events):raise ValueError('后台事件无效')
         if events:self.status.setText('\n'.join(events[-3:])[:2000])
+
+    def install_connection(self):
+        folder=max_connection.install('max-tools',self.context.resource('bridge/LXMaxBridge.ms'))
+        QMessageBox.information(self,'自动连接已安装','以后启动 Max 会自动连接。当前已打开的 Max 不会被重启，请点击“连接当前已打开窗口”完成首次连接。\n'+str(folder))
+
+    def connection_help(self):
+        script=str(self.context.resource('bridge/LXMaxBridge.ms'))
+        QApplication.clipboard().setText(script)
+        target=self.sessions.get(self.active_id,{}).get('detail','需要连接的 Max 窗口')
+        QMessageBox.information(self,'连接选中窗口','在 '+target+' 中使用 Scripting → Run Script 运行以下脚本。路径已复制；不会创建或重置场景。\n\n'+script)
 
     def selection_changed(self,item,*_):
         self.active_id=item.data(0,Qt.ItemDataRole.UserRole) if item else None

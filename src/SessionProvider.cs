@@ -43,9 +43,7 @@ public static class Engine {
     }
     public static List<Instance> Scan() {
         var result=new List<Instance>();
-        foreach(var saved in ReadManaged()) {
-            Process p;
-            try {p=Process.GetProcessById(saved.Pid); if(p.ProcessName!="3dsmax" || p.StartTime.ToUniversalTime().Ticks!=saved.Birth){p.Dispose();continue;}}catch{continue;}
+        foreach(var p in Process.GetProcessesByName("3dsmax")) {
             using(p) {
             var i=new Instance { Pid=p.Id,Title="正在启动 / 无可见窗口",Exe="",State="未连接" };
             try { i.Birth=p.StartTime.ToUniversalTime().Ticks;i.Title=String.IsNullOrWhiteSpace(p.MainWindowTitle)?i.Title:p.MainWindowTitle; }
@@ -151,14 +149,14 @@ static class Provider {
         } else if(op=="run") {
             var session=Field(request,"sessionId");var tool=Field(request,"toolId");
             var target=Engine.Scan().FirstOrDefault(i=>i.Key==session);
-            if(target==null)throw new Exception("此窗口已退出或不是由本工具打开。");
+            if(target==null)throw new Exception("此窗口已退出，请重新选择。");
             if(pending.Any(p=>p.Session==session&&p.Tool==tool))throw new Exception("此窗口的该工具正在打开，请稍候。");
             pending.Add(new Request{Session=session,Tool=tool,Path=Engine.Enqueue(target,tool),Deadline=DateTime.UtcNow.AddSeconds(30)});
             events.Add("正在 PID "+target.Pid+" 中打开 "+Engine.Label(tool)+"…");
         } else if(op=="rig") {
             var session=Field(request,"sessionId");
             var target=Engine.Scan().FirstOrDefault(i=>i.Key==session);
-            if(target==null)throw new Exception("目标 Max 已退出或不属于当前工具。");
+            if(target==null)throw new Exception("目标 Max 已退出，请重新选择。");
             if(pending.Any(p=>p.Session==session))throw new Exception("此 Max 还有操作正在执行，请等待完成。");
             if(!request.ContainsKey("request"))throw new Exception("缺少操作数据");
             var payload=json.Serialize(request["request"]);
@@ -190,7 +188,7 @@ static class Provider {
         }
         return new {protocol=1,id=Field(request,"id"),ok=true,applicationPath=Engine.DefaultExe(),events=events,results=results,
             sessions=sessions.Select(i=>new {id=i.Key,title=String.IsNullOrEmpty(i.Scene)?i.Title:Path.GetFileName(i.Scene),
-                detail="PID "+i.Pid+" · "+i.Title,state=i.Connected?"ready":i.State=="未连接"?"connecting":"busy",status=i.State}),
+                detail="PID "+i.Pid+" · "+i.Title,state=i.Connected?"ready":i.State=="未连接"?"unconnected":"busy",status=i.State}),
             pending=pending.Select(p=>new {sessionId=p.Session,toolId=p.Tool})};
     }
     static int Main() {

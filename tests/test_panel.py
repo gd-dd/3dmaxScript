@@ -19,6 +19,11 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(int(self.panel.process.state().value),0)
         self.assertFalse(hasattr(self.panel,'rig'))
         self.assertIn('rig-workbench',self.panel.buttons)
+    def test_closed_selection_never_moves_to_other_window(self):
+        self.panel.active_id='closed'
+        self.panel.apply_response({'sessions':[{'id':'other','state':'ready','detail':'Other Max'}]})
+        self.assertIsNone(self.panel.active_id)
+        self.assertFalse(any(button.isEnabled() for button in self.panel.buttons.values()))
     def test_target_switch_discards_late_result(self):
         r=RigWorkbench(self.panel);r.set_target('one');callbacks=[]
         self.panel.rig_command=lambda req,cb:callbacks.append(cb)
