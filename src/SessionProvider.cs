@@ -23,7 +23,8 @@ public static class Engine {
     public static readonly Dictionary<string,string> Plugins = new Dictionary<string,string> {
         {"animation-bake", "动画烘焙工具.ms"}, {"keyframe-formula", "自定义公式关键帧.ms"},
         {"material-split", "按材质ID拆分模型.ms"}, {"parent-keep-world", "保持位移建立父子.ms"},
-        {"pmx-import", "PMX导入.ms"}, {"root-cleanup", "清理根骨骼.ms"}
+        {"pmx-import", "PMX导入.ms"}, {"root-cleanup", "清理根骨骼.ms"},
+        {"rig-workbench", "LX_RigSkin.ms"}
     };
     public static string Decode(string s) { return Encoding.UTF8.GetString(Convert.FromBase64String(s)); }
     public static string Label(string id) { return Plugins.ContainsKey(id)?Path.GetFileNameWithoutExtension(Plugins[id]):id; }

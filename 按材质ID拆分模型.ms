@@ -1,27 +1,27 @@
-/*
+﻿/*
 ================================================================================
    按材质ID拆分模型 for 3ds Max
    将选中模型的三角面按材质ID分离为独立元素，元素名使用对应材质名称
 ================================================================================
 */
+global LXLegacyRoot = getFilenamePath (getSourceFileName())
+fileIn (LXLegacyRoot + "ui\\legacy_theme.ms") quiet:true
 try(destroyDialog MatIDSplitRollout)catch()
 
-rollout MatIDSplitRollout "按材质ID拆分模型" width:360 height:480
+rollout MatIDSplitRollout "按材质ID拆分模型" width:420
 (
+    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+
     ----------------------------------------------------------------------------
     --  UI
     ----------------------------------------------------------------------------
-    group "源对象"
-    (
-        pickbutton btnPickSrc "选择对象" width:320 height:28 autoDisplay:true
-        label lblSrcInfo "未选择" align:#center
-    )
-    group "选项"
-    (
-        checkbox chkDeleteSrc "拆分后删除原对象" checked:false
+    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  源对象"
+        pickbutton btnPickSrc "选择对象" width:376 height:28 autoDisplay:true
+        dotNetControl lblSrcInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  选项"
+        dotNetControl chkDeleteSrc "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"拆分后删除原对象" Checked:false
         checkbox chkCopyMat   "新元素保留材质"   checked:true
-    )
-    button btnExecute "执行拆分" width:320 height:40
+    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
 
     ----------------------------------------------------------------------------
     --  变量
@@ -31,7 +31,7 @@ rollout MatIDSplitRollout "按材质ID拆分模型" width:360 height:480
     ----------------------------------------------------------------------------
     --  Nahida
     ----------------------------------------------------------------------------
-    dotNetControl nahidaImg "System.Windows.Forms.PictureBox" pos:[80,260] width:200 height:200
+
 
     ----------------------------------------------------------------------------
     --  事件
@@ -49,20 +49,22 @@ rollout MatIDSplitRollout "按材质ID拆分模型" width:360 height:480
 
     on MatIDSplitRollout open do
     (
+        LXLegacySection lxSection1
+        LXLegacySection lxSection2
+        LXLegacyText lblSrcInfo
+        LXLegacyText chkDeleteSrc
+
+        LXLegacyHeader lxHeader "按材质 ID 拆分" "按材质整理模型，保留清晰的部件结构" (LXLegacyRoot + ".lxtool\\icon.png")
+        LXLegacyPrimary btnExecute "开始拆分模型"
+
         if selection.count == 1 and superClassOf selection[1] == GeometryClass do
         (
             srcNode = selection[1]
             lblSrcInfo.text = "已选择: " + srcNode.name
         )
-        local imgPath = (getFilenamePath (getSourceFileName())) + "Nahida.jpg"
-        if nahidaImg != undefined and doesFileExist imgPath do
-        (
-            nahidaImg.image = (dotNetClass "System.Drawing.Image").FromFile imgPath
-            nahidaImg.SizeMode = nahidaImg.SizeMode.Zoom
-        )
     )
 
-    on btnExecute pressed do
+    on btnExecute Click args do
     (
         if srcNode == undefined do
         (
@@ -187,9 +189,11 @@ rollout MatIDSplitRollout "按材质ID拆分模型" width:360 height:480
         msg += "生成元素: " + validIDs.count as string + " 个"
         messageBox msg title:"按材质ID拆分 - 完成"
     )
+    on MatIDSplitRollout close do LXLegacyDisposeHeader lxHeader
+
 )
 
-createDialog MatIDSplitRollout
+createDialog MatIDSplitRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "按材质ID拆分模型工具已加载。\n"
 

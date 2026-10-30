@@ -15,7 +15,10 @@ with tempfile.TemporaryDirectory(prefix='lx-rig-package-') as temp:
     tool=dict(manifest,root=root,id='repo-1342543761',panelData=json.loads((root/'.lxtool/panel.json').read_text('utf-8')))
     workspace=RepositoryWorkspace(base/'tools',base/'config');workspace.display(tool)
     panel=workspace.native_panel.widget
-    assert panel.rig.tabs.count()==5
+    assert not hasattr(panel,'rig')
+    assert 'rig-workbench' in panel.buttons
+    assert (root/'LX_RigSkin.ms').is_file()
+    assert (root/'rig/max_ui.py').is_file()
     assert panel.process.state().value==0,'rendering started a process'
     workspace.shutdown();workspace.shutdown()
-print('PASS: exact ZIP hashes, shelf RepositoryWorkspace, five embedded tabs, idle construction, repeated shutdown')
+print('PASS: exact ZIP hashes, shelf RepositoryWorkspace, Max launcher only, standalone Max entry, idle construction, repeated shutdown')

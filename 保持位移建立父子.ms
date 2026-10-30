@@ -1,35 +1,32 @@
-/*
+﻿/*
 ================================================================================
   保持相对位移建立父子关系
   选择子物体和父物体，在位移不变的情况下建立父子关系，逐帧打关键帧
 ================================================================================
 */
+global LXLegacyRoot = getFilenamePath (getSourceFileName())
+fileIn (LXLegacyRoot + "ui\\legacy_theme.ms") quiet:true
 try(destroyDialog ReparentBakeRollout)catch()
 
-rollout ReparentBakeRollout "保持位移建立父子" width:360 height:520
+rollout ReparentBakeRollout "保持位移建立父子" width:420
 (
-    group "子物体"
-    (
-        pickbutton btnPickChild "选择子物体" width:320 height:28 autoDisplay:true
-        label lblChildInfo "未选择" align:#center
-    )
-    group "父物体"
-    (
-        pickbutton btnPickParent "选择父物体" width:320 height:28 autoDisplay:true
-        label lblParentInfo "未选择" align:#center
-    )
-    group "帧范围"
-    (
+    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+
+    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  子物体"
+        pickbutton btnPickChild "选择子物体" width:376 height:28 autoDisplay:true
+        dotNetControl lblChildInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  父物体"
+        pickbutton btnPickParent "选择父物体" width:376 height:28 autoDisplay:true
+        dotNetControl lblParentInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+    dotNetControl lxSection3 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"03  帧范围"
         spinner spnStart "起始帧:" range:[-9999,99999,0] type:#integer width:120
         spinner spnEnd   "结束帧:" range:[-9999,99999,100] type:#integer width:120
-        button btnGetRange "获取场景时间范围" width:140 height:22
-    )
-    button btnExecute "执行" width:320 height:40
+        dotNetControl btnGetRange "System.Windows.Forms.Button" width:376 height:30 align:#center
+    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
 
     local childNode  = undefined
     local parentNode = undefined
 
-    dotNetControl nahidaImg "System.Windows.Forms.PictureBox" pos:[80,300] width:200 height:200
 
     on btnPickChild picked obj do
     (
@@ -43,6 +40,16 @@ rollout ReparentBakeRollout "保持位移建立父子" width:360 height:520
     )
     on ReparentBakeRollout open do
     (
+        LXLegacySection lxSection1
+        LXLegacySection lxSection2
+        LXLegacySection lxSection3
+        LXLegacyText lblChildInfo
+        LXLegacyText lblParentInfo
+        LXLegacySecondary btnGetRange "获取场景时间范围"
+
+        LXLegacyHeader lxHeader "保持位移建立父子" "建立新层级，逐帧保留世界变换" (LXLegacyRoot + ".lxtool\\icon.png")
+        LXLegacyPrimary btnExecute "建立父子并烘焙"
+
         if selection.count >= 2 do
         (
             childNode = selection[1]
@@ -50,20 +57,14 @@ rollout ReparentBakeRollout "保持位移建立父子" width:360 height:520
             lblChildInfo.text = "子物体: " + childNode.name
             lblParentInfo.text = "父物体: " + parentNode.name
         )
-        local imgPath = (getFilenamePath (getSourceFileName())) + "Nahida.jpg"
-        if nahidaImg != undefined and doesFileExist imgPath do
-        (
-            nahidaImg.image = (dotNetClass "System.Drawing.Image").FromFile imgPath
-            nahidaImg.SizeMode = nahidaImg.SizeMode.Zoom
-        )
     )
-    on btnGetRange pressed do
+    on btnGetRange Click args do
     (
         spnStart.value = animationRange.start.frame as integer
         spnEnd.value   = animationRange.end.frame as integer
     )
 
-    on btnExecute pressed do
+    on btnExecute Click args do
     (
         if childNode == undefined do
         (
@@ -128,9 +129,11 @@ rollout ReparentBakeRollout "保持位移建立父子" width:360 height:520
     )
 
 
+    on ReparentBakeRollout close do LXLegacyDisposeHeader lxHeader
+
 )
 
-createDialog ReparentBakeRollout
+createDialog ReparentBakeRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "保持位移建立父子关系工具已加载。\n"
 

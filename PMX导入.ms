@@ -1,4 +1,4 @@
-/*
+﻿/*
 ================================================================================
    PMX 导入插件 for 3ds Max
    支持 PMX 2.0 / 2.1 模型导入，包括网格、骨骼蒙皮、材质贴图、顶点变形
@@ -8,8 +8,8 @@
 -------------------------------------------------------------------------------
 --  DotNet 编码器（UTF-8 / UTF-16LE 字符串解码用）
 -------------------------------------------------------------------------------
-global PMX_UTF8    = dotNetClass "System.Text.Encoding".UTF8
-global PMX_Unicode = dotNetClass "System.Text.Encoding".Unicode
+global PMX_UTF8    = (dotNetClass "System.Text.Encoding").UTF8
+global PMX_Unicode = (dotNetClass "System.Text.Encoding").Unicode
 
 -------------------------------------------------------------------------------
 --  工具函数
@@ -301,7 +301,7 @@ fn pmxBuildBoneHierarchy pmxData = (
     -- 正确初始化数组：append undefined 填充
     for i = 1 to boneCount do append allBones undefined
     local rootNodes = #()
-    
+
     for i = 1 to boneCount do (
         if allBones[i] == undefined then (
             -- 迭代栈：从当前骨骼向上追溯，建立父骨骼链
@@ -318,21 +318,21 @@ fn pmxBuildBoneHierarchy pmxData = (
             local parentForNext = undefined
             if b.parentIdx < boneCount and (b.parentIdx + 1) != cur then
                 parentForNext = allBones[b.parentIdx + 1]
-            
+
             while stack.count > 0 do (
                 cur = stack[stack.count]
                 stack.count = stack.count - 1
                 b = pmxData.bones[cur]
-                
+
                 local bn = BoneSys.createBone b.pos [0,0,0] [0,0,1]
                 bn.name = b.name
                 bn.width = 0.5; bn.height = 0.5; bn.taper = 90
-                
+
                 local tail = b.pos + [0,0,5]
                 if b.tailType == 0 then tail = b.tailPos
                 else if b.tailType == 1 and b.tailBoneIdx >= 0 and b.tailBoneIdx < boneCount then
                     tail = pmxData.bones[b.tailBoneIdx + 1].pos
-                
+
                 local dir = tail - b.pos
                 bn.length = if (length dir) > 0.001 then (length dir) else 5.0
                 if (length dir) > 0.001 then (
@@ -343,7 +343,7 @@ fn pmxBuildBoneHierarchy pmxData = (
                     local yA = normalize (cross zA xA)
                     bn.transform = matrix3 xA yA zA b.pos
                 ) else bn.pos = b.pos
-                
+
                 if parentForNext != undefined then bn.parent = parentForNext
                 allBones[cur] = bn
                 parentForNext = bn
@@ -525,32 +525,35 @@ fn importPMXFile filePath showUI:false = (
 -------------------------------------------------------------------------------
 --  UI Rollout
 -------------------------------------------------------------------------------
+global LXLegacyRoot = getFilenamePath (getSourceFileName())
+fileIn (LXLegacyRoot + "ui\\legacy_theme.ms") quiet:true
 try(destroyDialog PMXImportRollout)catch()
 
-rollout PMXImportRollout "PMX 导入" width:380 height:600
+rollout PMXImportRollout "PMX 导入" width:420
 (
-    group "PMX 文件"
-    (
+    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+
+    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  PMX 文件"
         editText edtPath "" width:300 height:22 readonly:true
-        button btnBrowse "选择 PMX 文件..." width:340 height:30
-    )
-    group "模型信息"
-    (
-        label lblInfo "尚未选择文件" align:#left
-    )
-    button btnImport "导入模型" width:340 height:44 enabled:false
+        dotNetControl btnBrowse "System.Windows.Forms.Button" width:376 height:30 align:#center
+    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  模型信息"
+        dotNetControl lblInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"尚未选择文件" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+    dotNetControl btnImport "System.Windows.Forms.Button" width:376 height:42 align:#center enabled:false
 
     local selectedFilePath=""
-    dotNetControl nahidaImg "System.Windows.Forms.PictureBox" pos:[90,220] width:200 height:200
+
 
     on PMXImportRollout open do (
-        local imgPath=(getFilenamePath(getSourceFileName()))+"Nahida.jpg"
-        if nahidaImg!=undefined and doesFileExist imgPath do (
-            nahidaImg.image=(dotNetClass "System.Drawing.Image").FromFile imgPath
-            nahidaImg.SizeMode=nahidaImg.SizeMode.Zoom
-        )
+        LXLegacySection lxSection1
+        LXLegacySection lxSection2
+        LXLegacyText lblInfo
+        LXLegacySecondary btnBrowse "选择 PMX 文件..."
+
+        LXLegacyHeader lxHeader "PMX 模型导入" "选择文件，检查信息，再导入当前场景" (LXLegacyRoot + ".lxtool\\icon.png")
+        LXLegacyPrimary btnImport "导入到当前场景"
+
     )
-    on btnBrowse pressed do (
+    on btnBrowse Click args do (
         local fname=pmxPickFile()
         if fname!=undefined then (
             selectedFilePath=fname; edtPath.text=fname; btnImport.enabled=true
@@ -565,7 +568,7 @@ rollout PMXImportRollout "PMX 导入" width:380 height:600
             )
         )
     )
-    on btnImport pressed do (
+    on btnImport Click args do (
         if selectedFilePath=="" then (messageBox "请先选择PMX文件" title:"PMX导入"; return false)
         btnBrowse.enabled=false; btnImport.enabled=false
         local st=timestamp()
@@ -577,8 +580,10 @@ rollout PMXImportRollout "PMX 导入" width:380 height:600
         )
         btnBrowse.enabled=true; btnImport.enabled=(selectedFilePath!="")
     )
+    on PMXImportRollout close do LXLegacyDisposeHeader lxHeader
+
 )
 
-createDialog PMXImportRollout
+createDialog PMXImportRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 format "PMX导入插件已加载。\n"
 -- 纳西妲世界第一可爱

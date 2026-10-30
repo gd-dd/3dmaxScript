@@ -1,41 +1,36 @@
-/*
+﻿/*
 ================================================================================
   根骨骼约束烘焙工具 for 3ds Max
   将 Bip001 位移逐帧烘焙到已有虚拟体，勾选 = 传递该轴
 ================================================================================
 */
+global LXLegacyRoot = getFilenamePath (getSourceFileName())
+fileIn (LXLegacyRoot + "ui\\legacy_theme.ms") quiet:true
 try(destroyDialog RootBoneBakeRollout)catch()
 
-rollout RootBoneBakeRollout "根骨骼约束烘焙" width:360 height:600
+rollout RootBoneBakeRollout "根骨骼约束烘焙" width:420
 (
-    group "源 - 根骨骼"
-    (
-        pickbutton btnPickBone "选择 Bip001" width:320 height:28 autoDisplay:true
-        label lblBoneInfo "执行时自动查找 Bip001" align:#center
-    )
-    group "目标 - 虚拟体"
-    (
-        pickbutton btnPickDummy "选择虚拟体" width:320 height:28 autoDisplay:true
-        label lblDummyInfo "也可先选中虚拟体再打开工具" align:#center
-    )
-    group "对齐 —— 勾选 = 将该轴位移传给虚拟体"
-    (
-        checkbox chkAxisX "X 轴" checked:false
-        checkbox chkAxisY "Y 轴" checked:true
-        checkbox chkAxisZ "Z 轴" checked:false
-    )
-    group "帧范围"
-    (
+    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+
+    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  源 - 根骨骼"
+        pickbutton btnPickBone "选择 Bip001" width:376 height:28 autoDisplay:true
+        dotNetControl lblBoneInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"执行时自动查找 Bip001" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  目标 - 虚拟体"
+        pickbutton btnPickDummy "选择虚拟体" width:376 height:28 autoDisplay:true
+        dotNetControl lblDummyInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"也可先选中虚拟体再打开工具" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+    dotNetControl lxSection3 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"03  对齐 —— 勾选 = 将该轴位移传给虚拟体"
+        dotNetControl chkAxisX "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"X 轴" Checked:false
+        dotNetControl chkAxisY "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"Y 轴" Checked:true
+        dotNetControl chkAxisZ "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"Z 轴" Checked:false
+    dotNetControl lxSection4 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"04  帧范围"
         spinner spnStart "起始帧:" range:[-9999,99999,0] type:#integer width:120
         spinner spnEnd   "结束帧:" range:[-9999,99999,100] type:#integer width:120
-        button btnGetRange "获取场景时间范围" width:140 height:22
-    )
-    button btnExecute "执行烘焙" width:320 height:40
+        dotNetControl btnGetRange "System.Windows.Forms.Button" width:376 height:30 align:#center
+    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
 
     local boneNode  = undefined
     local dummyNode = undefined
 
-    dotNetControl nahidaImg "System.Windows.Forms.PictureBox" pos:[80,380] width:200 height:200
 
     on btnPickBone picked obj do
     (
@@ -49,25 +44,33 @@ rollout RootBoneBakeRollout "根骨骼约束烘焙" width:360 height:600
     )
     on RootBoneBakeRollout open do
     (
+        LXLegacySection lxSection1
+        LXLegacySection lxSection2
+        LXLegacySection lxSection3
+        LXLegacySection lxSection4
+        LXLegacyText lblBoneInfo
+        LXLegacyText lblDummyInfo
+        LXLegacyText chkAxisX
+        LXLegacyText chkAxisY
+        LXLegacyText chkAxisZ
+        LXLegacySecondary btnGetRange "获取场景时间范围"
+
+        LXLegacyHeader lxHeader "根骨骼约束烘焙" "把根骨骼运动传递给目标虚拟体" (LXLegacyRoot + ".lxtool\\icon.png")
+        LXLegacyPrimary btnExecute "烘焙根骨骼运动"
+
         if selection.count == 1 do
         (
             dummyNode = selection[1]
             lblDummyInfo.text = "虚拟体: " + dummyNode.name
         )
-        local imgPath = (getFilenamePath (getSourceFileName())) + "Nahida.jpg"
-        if nahidaImg != undefined and doesFileExist imgPath do
-        (
-            nahidaImg.image = (dotNetClass "System.Drawing.Image").FromFile imgPath
-            nahidaImg.SizeMode = nahidaImg.SizeMode.Zoom
-        )
     )
-    on btnGetRange pressed do
+    on btnGetRange Click args do
     (
         spnStart.value = animationRange.start.frame as integer
         spnEnd.value   = animationRange.end.frame as integer
     )
 
-    on btnExecute pressed do
+    on btnExecute Click args do
     (
         if boneNode == undefined do
         (
@@ -142,9 +145,11 @@ rollout RootBoneBakeRollout "根骨骼约束烘焙" width:360 height:600
     )
 
 
+    on RootBoneBakeRollout close do LXLegacyDisposeHeader lxHeader
+
 )
 
-createDialog RootBoneBakeRollout
+createDialog RootBoneBakeRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "根骨骼约束烘焙工具已加载。\n"
 

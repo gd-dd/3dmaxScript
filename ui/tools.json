@@ -5,6 +5,12 @@
   "launchLabel": "+ 打开 Max",
   "tools": [
     {
+      "id": "rig-workbench",
+      "label": "绑定蒙皮",
+      "description": "在选中 Max 内打开可停靠工作台",
+      "group": "绑定"
+    },
+    {
       "id": "animation-bake",
       "label": "动画烘焙",
       "description": "按采样间隔烘焙动画",

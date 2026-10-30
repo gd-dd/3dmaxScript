@@ -1,15 +1,15 @@
-"""Embedded rig workbench. UI sends typed commands, never executable scripts."""
+"""Max workbench content. UI sends local typed commands, never source strings."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,
     QPushButton,QComboBox,QLineEdit,QDoubleSpinBox,QSpinBox,QTabWidget,QTreeWidget,
-    QTreeWidgetItem,QAbstractItemView,QCheckBox,QFileDialog,QScrollArea,QFrame,QHeaderView)
+    QTreeWidgetItem,QAbstractItemView,QCheckBox,QFileDialog,QScrollArea,QFrame,QHeaderView,QGridLayout)
 
 
 class RigWorkbench(QWidget):
     def __init__(self, owner):
         super().__init__();self.owner=owner;self.session=None;self.scene=None;self.nodes=[];self.profile={};self.busy=False
         root=QVBoxLayout(self);root.setContentsMargins(0,8,0,0)
-        self.notice=QLabel('选择已连接的 Max，然后读取场景。');self.notice.setWordWrap(True);root.addWidget(self.notice)
+        self.notice=QLabel('读取当前 Max 场景，开始绑定与蒙皮。');self.notice.setWordWrap(True);root.addWidget(self.notice)
         self.refresh=QPushButton('读取 / 刷新场景');self.refresh.clicked.connect(lambda:self.call('scene.inspect',{},self.load_scene));root.addWidget(self.refresh)
         self.cancel=QPushButton('取消尚未开始的操作');self.cancel.hide();self.cancel.clicked.connect(lambda:self.owner.command('cancel-rig',requestId=getattr(self,'request_id',None),sessionId=self.session));root.addWidget(self.cancel)
         self.body=QWidget();root.addWidget(self.body);layout=QVBoxLayout(self.body)
@@ -71,9 +71,9 @@ class RigWorkbench(QWidget):
         widget=QWidget();form=QFormLayout(widget);form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame);scroll.setWidget(widget);self.tabs.addTab(scroll,title);return form
     def actions(self,form,*items):
-        row=QHBoxLayout()
-        for title,fn in items:
-            button=QPushButton(title);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button)
+        row=QGridLayout()
+        for index,(title,fn) in enumerate(items):
+            button=QPushButton(title);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button,index//2,index%2)
         form.addRow(row)
     def guard(self,fn):
         try:fn()
@@ -84,13 +84,13 @@ class RigWorkbench(QWidget):
         w=QSpinBox();w.setRange(low,high);w.setValue(value);return w
     def set_target(self,session):
         if session!=self.session:
-            self.session=session;self.scene=None;self.nodes=[];self.mesh.clear();self.tree.clear();self.busy=False;self.notice.setText('目标窗口已改变，请读取场景。')
+            self.session=session;self.scene=None;self.nodes=[];self.mesh.clear();self.tree.clear();self.busy=False;self.notice.setText('当前场景已改变，请读取场景。')
         self.refresh.setEnabled(bool(session) and not self.busy);self.body.setEnabled(bool(self.scene) and not self.busy)
         self.cancel.setVisible(self.busy)
     def params(self,**extra):return dict(mesh=self.mesh.currentData(),skin=self.skin.currentData() or 0,skinHandle=self.skin.currentData(Qt.ItemDataRole.UserRole+1),**extra)
     def call(self,action,params=None,callback=None):
         if self.busy:raise ValueError('请等待当前操作完成')
-        if not self.session:raise ValueError('请先连接 Max')
+        if not self.session:raise ValueError('当前 Max 场景尚未就绪')
         session=self.session;self.busy=True;self.set_target(session);self.notice.setText('正在执行：'+action)
         def done(result):
             if self.session!=session:return

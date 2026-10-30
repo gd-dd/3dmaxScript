@@ -7,13 +7,10 @@ global LXMaxBridgeSource
 global LXRigPayload
 global LXRigResponse
 global LXRigResultPath
-global LXRigSceneToken = ((dotNetClass "System.Guid").NewGuid()).ToString()
-callbacks.removeScripts id:#LXRigScene
-for event in #(#filePostOpen, #systemPostNew, #systemPostReset) do
-    callbacks.addScript event "LXRigSceneToken = ((dotNetClass \"System.Guid\").NewGuid()).ToString()" id:#LXRigScene
 try (if LXMaxBridgeTimer != undefined do LXMaxBridgeTimer.Stop()) catch()
 LXMaxBridgeSource = getSourceFileName()
 LXMaxBridgeRoot = (dotNetClass "System.IO.Path").GetFullPath ((getFilenamePath LXMaxBridgeSource) + "..")
+fileIn (LXMaxBridgeRoot + "\\bridge\\rig_context.ms") quiet:true
 (
     local proc = (dotNetClass "System.Diagnostics.Process").GetCurrentProcess()
     local started = proc.StartTime
@@ -55,6 +52,7 @@ fn LXMaxBridgeRun id =
         "parent-keep-world": "保持位移建立父子.ms"
         "pmx-import": "PMX导入.ms"
         "root-cleanup": "清理根骨骼.ms"
+        "rig-workbench": "LX_RigSkin.ms"
         default: undefined
     )
     if script == undefined then throw "Unknown plugin ID"

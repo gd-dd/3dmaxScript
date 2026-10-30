@@ -1,45 +1,55 @@
-/*
+﻿/*
 ================================================================================
    动画烘焙工具 for 3ds Max
    将选中对象的动画通道逐帧烘焙为关键帧，支持自动对齐场景时间范围
 ================================================================================
 */
+global LXLegacyRoot = getFilenamePath (getSourceFileName())
+fileIn (LXLegacyRoot + "ui\\legacy_theme.ms") quiet:true
 try(destroyDialog AnimBakeRollout)catch()
 
-rollout AnimBakeRollout "动画烘焙工具" width:360 height:560
+rollout AnimBakeRollout "动画烘焙工具" width:420
 (
+    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+
     ----------------------------------------------------------------------------
     --  UI
     ----------------------------------------------------------------------------
-    group "目标对象"
-    (
-        button btnGetObjs "从场景选择中获取对象" width:320 height:28
-        label lblObjInfo "未获取对象" align:#center
-    )
-    group "烘焙通道"
-    (
-        checkbox chkPos "位移 (Position)" checked:true
-        checkbox chkRot "旋转 (Rotation)" checked:true
-        checkbox chkScale "缩放 (Scale)" checked:true
-    )
-    group "帧范围"
-    (
+    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  目标对象"
+        dotNetControl btnGetObjs "System.Windows.Forms.Button" width:376 height:30 align:#center
+        dotNetControl lblObjInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未获取对象" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  烘焙通道"
+        dotNetControl chkPos "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"位移 (Position)" Checked:true
+        dotNetControl chkRot "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"旋转 (Rotation)" Checked:true
+        dotNetControl chkScale "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"缩放 (Scale)" Checked:true
+    dotNetControl lxSection3 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"03  帧范围"
         spinner spnStart "起始帧:" range:[-9999,99999,0] type:#integer width:120
         spinner spnEnd   "结束帧:" range:[-9999,99999,100] type:#integer width:120
         spinner spnStep  "采样间隔:" range:[1,100,1] type:#integer width:120
-        button btnGetRange "获取场景时间范围" width:150 height:22
-    )
-    button btnExecute "执行烘焙" width:320 height:44
+        dotNetControl btnGetRange "System.Windows.Forms.Button" width:376 height:30 align:#center
+    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
 
     local bakeObjs = #()
 
-    dotNetControl nahidaImg "System.Windows.Forms.PictureBox" pos:[80,330] width:200 height:200
 
     ----------------------------------------------------------------------------
     --  事件
     ----------------------------------------------------------------------------
     on AnimBakeRollout open do
     (
+        LXLegacySection lxSection1
+        LXLegacySection lxSection2
+        LXLegacySection lxSection3
+        LXLegacyText lblObjInfo
+        LXLegacyText chkPos
+        LXLegacyText chkRot
+        LXLegacyText chkScale
+        LXLegacySecondary btnGetObjs "从场景选择中获取对象"
+        LXLegacySecondary btnGetRange "获取场景时间范围"
+
+        LXLegacyHeader lxHeader "动画烘焙" "选择对象，设置通道与采样范围" (LXLegacyRoot + ".lxtool\\icon.png")
+        LXLegacyPrimary btnExecute "执行烘焙"
+
         spnStart.value = animationRange.start.frame as integer
         spnEnd.value   = animationRange.end.frame as integer
         if selection.count > 0 do
@@ -50,15 +60,9 @@ rollout AnimBakeRollout "动画烘焙工具" width:360 height:560
             else if bakeObjs.count > 1 then
                 lblObjInfo.text = "已获取 " + bakeObjs.count as string + " 个对象"
         )
-        local imgPath = (getFilenamePath (getSourceFileName())) + "Nahida.jpg"
-        if nahidaImg != undefined and doesFileExist imgPath do
-        (
-            nahidaImg.image = (dotNetClass "System.Drawing.Image").FromFile imgPath
-            nahidaImg.SizeMode = nahidaImg.SizeMode.Zoom
-        )
     )
 
-    on btnGetObjs pressed do
+    on btnGetObjs Click args do
     (
         bakeObjs = selection as array
         if bakeObjs.count == 0 then
@@ -69,13 +73,13 @@ rollout AnimBakeRollout "动画烘焙工具" width:360 height:560
             lblObjInfo.text = "已获取 " + bakeObjs.count as string + " 个对象"
     )
 
-    on btnGetRange pressed do
+    on btnGetRange Click args do
     (
         spnStart.value = animationRange.start.frame as integer
         spnEnd.value   = animationRange.end.frame as integer
     )
 
-    on btnExecute pressed do
+    on btnExecute Click args do
     (
         if bakeObjs.count == 0 do
         (
@@ -145,9 +149,11 @@ rollout AnimBakeRollout "动画烘焙工具" width:360 height:560
         msg += "\n共 " + frameCount as string + " 帧"
         messageBox msg title:"动画烘焙 - 完成"
     )
+    on AnimBakeRollout close do LXLegacyDisposeHeader lxHeader
+
 )
 
-createDialog AnimBakeRollout
+createDialog AnimBakeRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "动画烘焙工具已加载。\n"
 

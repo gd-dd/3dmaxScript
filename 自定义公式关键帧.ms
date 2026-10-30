@@ -1,4 +1,4 @@
-/*
+﻿/*
 ================================================================================
    自定义公式计算关键帧 for 3ds Max
    对曲线编辑器中选中的关键帧应用公式
@@ -6,29 +6,30 @@
    三角函数使用角度制 (sin(90)=1)
 ================================================================================
 */
+global LXLegacyRoot = getFilenamePath (getSourceFileName())
+fileIn (LXLegacyRoot + "ui\\legacy_theme.ms") quiet:true
 try(destroyDialog CustomFormulaRollout)catch()
 
-rollout CustomFormulaRollout "自定义公式计算关键帧" width:400 height:560
+rollout CustomFormulaRollout "自定义公式计算关键帧" width:420
 (
-    group "公式设置"
-    (
-        edittext edtFormula "" width:360 text:"v"
-        label lblVar "━━━━ 变量 ━━━━" align:#center
-        label lblV "  v = 当前帧值    t = 帧号    n = 物体名后缀数字" align:#left
-        label lblOp "━━━━ 运算符 ━━━━" align:#center
-        label lblOp2 "  + - * /    ^幂    mod a b 取余" align:#left
-        label lblFunc0 "━━━━ 函数（角度制）━━━━" align:#center
-        label lblFunc1 "  sin(x) cos(x) tan(x)  asin(x) acos(x) atan(x)" align:#left
-        label lblFunc2 "  sqrt abs pow log exp ceil floor round pi e" align:#left
-        label lblSep "━━━━ 示例 ━━━━" align:#center
-        label lblEx1 "  v * (1 + sin(t * 5))          振幅波动" align:#left
-        label lblEx2 "  v + n * 10                     按物体编号偏移" align:#left
-        label lblEx3 "  mod (v + t * 3) 360            0~360 循环" align:#left
-    )
+    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
 
-    button btnApply "应用公式到选中关键帧" width:360 height:44
+    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  公式设置"
+        edittext edtFormula "" width:376 text:"v"
+        dotNetControl lblVar "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"变量" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+        dotNetControl lblV "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  v = 当前帧值    t = 帧号    n = 物体名后缀数字" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+        dotNetControl lblOp "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"运算符" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+        dotNetControl lblOp2 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  + - * /    ^幂    mod a b 取余" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+        dotNetControl lblFunc0 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"函数 · 角度制" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+        dotNetControl lblFunc1 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  sin(x) cos(x) tan(x)  asin(x) acos(x) atan(x)" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+        dotNetControl lblFunc2 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  sqrt abs pow log exp ceil floor round pi e" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+        dotNetControl lblSep "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"常用示例" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
+        dotNetControl lblEx1 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  v * (1 + sin(t * 5))          振幅波动" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+        dotNetControl lblEx2 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  v + n * 10                     按物体编号偏移" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
+        dotNetControl lblEx3 "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"  mod (v + t * 3) 360            0~360 循环" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
 
-    dotNetControl nahidaImg "System.Windows.Forms.PictureBox" pos:[100,320] width:200 height:200
+    dotNetControl btnApply "System.Windows.Forms.Button" width:376 height:42 align:#center
+
 
     ------------------------------------------------------------------------
     --  辅助函数
@@ -109,15 +110,25 @@ rollout CustomFormulaRollout "自定义公式计算关键帧" width:400 height:5
     ------------------------------------------------------------------------
     on CustomFormulaRollout open do
     (
-        local imgPath = (getFilenamePath (getSourceFileName())) + "Nahida.jpg"
-        if nahidaImg != undefined and doesFileExist imgPath do
-        (
-            nahidaImg.image = (dotNetClass "System.Drawing.Image").FromFile imgPath
-            nahidaImg.SizeMode = nahidaImg.SizeMode.Zoom
-        )
+        LXLegacySection lxSection1
+        LXLegacyText lblVar
+        LXLegacyText lblV
+        LXLegacyText lblOp
+        LXLegacyText lblOp2
+        LXLegacyText lblFunc0
+        LXLegacyText lblFunc1
+        LXLegacyText lblFunc2
+        LXLegacyText lblSep
+        LXLegacyText lblEx1
+        LXLegacyText lblEx2
+        LXLegacyText lblEx3
+
+        LXLegacyHeader lxHeader "公式关键帧" "用公式批量调整选中的动画关键帧" (LXLegacyRoot + ".lxtool\\icon.png")
+        LXLegacyPrimary btnApply "应用到选中关键帧"
+
     )
 
-    on btnApply pressed do
+    on btnApply Click args do
     (
         local formula = edtFormula.text
         if formula == "" do
@@ -202,9 +213,11 @@ rollout CustomFormulaRollout "自定义公式计算关键帧" width:400 height:5
         if errorCount > 0 then msg += "\n" + errorCount as string + " 个出错"
         messageBox msg title:"自定义公式"
     )
+    on CustomFormulaRollout close do LXLegacyDisposeHeader lxHeader
+
 )
 
-createDialog CustomFormulaRollout
+createDialog CustomFormulaRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "自定义公式计算关键帧 已加载（角度制）。\n"
 
