@@ -12,6 +12,18 @@ class WorkflowAlgorithms(unittest.TestCase):
    self.assertTrue(b['parent'] is None or b['parent'] in seen);self.assertNotIn(b['role'],seen);seen.add(b['role'])
    self.assertGreater(binding.distance(b['start'],b['end']),0)
   self.assertIn('R_Toe4_02',seen);self.assertIn('L_UpperArm_03',seen)
+ def test_human_empty_prefix_and_biped_shoulders(self):
+  for prefix in ('','   '):
+   bones={b['role']:b for b in humanoid.plan(dict(prefix=prefix,height=100))}
+   self.assertEqual(bones['Pelvis']['name'],'Pelvis')
+   for side,sign in [('L',1),('R',-1)]:
+    shoulder=bones[side+'_Clavicle'];arm=bones[side+'_UpperArm_01'];forearm=bones[side+'_Forearm_01']
+    self.assertEqual(arm['parent'],shoulder['role']);self.assertEqual(shoulder['end'],arm['start'])
+    self.assertGreater(sign*shoulder['start'][0],0)
+    self.assertGreater(forearm['start'][1],arm['start'][1])
+    self.assertLess(bones[side+'_Calf_01']['start'][1],bones[side+'_Thigh_01']['start'][1])
+    self.assertGreater(humanoid.dimensions(shoulder['role'],100)[0],humanoid.dimensions(side+'_Finger0_01',100)[0])
+  self.assertEqual(humanoid.plan({'prefix':'Hero_'})[0]['name'],'Hero_Pelvis')
  def test_segment_uses_length(self):
   rows,_=binding.solve([[9,.1,0]],[],[('a',[0,0,0],[10,0,0]),('b',[9,2,0],[9,3,0])],limit=1)
   self.assertEqual(rows,[{'a':1}])

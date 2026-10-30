@@ -402,3 +402,4 @@ def dispatch(request):
 # Extensions register typed commands without coupling the original adapter to UI.
 from . import workflow_host
 from . import brush
+from . import symmetry

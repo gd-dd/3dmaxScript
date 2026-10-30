@@ -47,7 +47,7 @@ def visibility(p):
 def create_humanoid(p):
     specs=humanoid.plan(p);created={};rig_id=uuid.uuid4().hex
     for spec in specs:
-        result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width=b.height=float(p.get('height',170))*.008
+        result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=.15
         free_bone(b);mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
         if spec['chain']:rt.setUserProp(b,'LXChain',spec['chain'])
         if spec['parent']:b.parent=created[spec['parent']]

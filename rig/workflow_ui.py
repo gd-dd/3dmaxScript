@@ -26,16 +26,30 @@ class WorkflowWorkbench(RigWorkbench):
         self.roster=QTreeWidget();self.roster.setHeaderLabels(['已导入对象','类别']);one.addRow(self.roster)
         two=self.page('02  自由人体骨架')
         self.rig_prefix=QLineEdit('LX');self.rig_height=self.number(.01,100000,170,1)
+        self.rig_prefix.setPlaceholderText('留空：不加前缀或开头下划线')
         two.addRow('命名前缀',self.rig_prefix);two.addRow('高度（场景单位）',self.rig_height)
         self.chain_counts={}
         for key,title,value,low,high in [('spine','脊柱节数',3,1,12),('neck','颈部节数',1,1,12),('upperArm','上臂节数',1,1,12),('forearm','前臂节数',1,1,12),('thigh','大腿节数',1,1,12),('calf','小腿节数',1,1,12),('fingers','每手手指数',5,0,5),('fingerLinks','每指节数',3,1,12),('toes','每脚脚趾数',1,0,5),('toeLinks','每趾节数',2,1,12)]:
             field=self.integer(low,high,value);self.chain_counts[key]=field;two.addRow(title,field)
         self.actions(two,('在视口拖出人体高度',lambda:self.call('humanoid.drag',self.humanoid_options())),('按数值在原点创建',lambda:self.mutate('humanoid.create',self.humanoid_options())))
-        note=QLabel('Z 轴向上，面向 -Y。生成普通 Bone 和完整父子链，无 IK、不锁长度；可在视口移动和旋转。');note.setWordWrap(True);two.addRow(note)
+        note=QLabel('参照 Biped 比例与放松姿态，包含独立肩 / 锁骨。Z 轴向上，面向 -Y。普通 Bone，无 IK、不锁长度；可移动旋转。');note.setWordWrap(True);two.addRow(note)
         # Existing skeleton controls become the detailed stage, with viewport operations first.
         self.tabs.addTab(old[0][0],'03  自定义与定位')
         self.child_name=QLineEdit('LX_Custom');self.child_length=self.number(.001,100000,10,1)
         self.skeleton.insertRow(0,'新子骨骼名称',self.child_name);self.skeleton.insertRow(1,'子骨骼长度',self.child_length)
+        symmetry=QWidget();symmetry_form=QVBoxLayout(symmetry);symmetry_form.setContentsMargins(0,0,0,0)
+        self.symmetry_side=QComboBox();self.symmetry_side.addItem('左 → 右','L');self.symmetry_side.addItem('右 → 左','R')
+        self.symmetry_whole=QCheckBox('选中骨架整侧（关闭则为选中骨骼及子骨骼）');self.symmetry_whole.setChecked(True)
+        self.symmetry_auto_center=QCheckBox('以骨盆位置为中线（世界 X）');self.symmetry_auto_center.setChecked(True)
+        self.symmetry_center=self.number(-100000,100000,0,1);self.symmetry_center.setEnabled(False)
+        self.symmetry_auto_center.toggled.connect(lambda on:self.symmetry_center.setEnabled(not on))
+        self.symmetry_live=QCheckBox('自动同步：编辑源侧后更新另一侧')
+        self.symmetry_live.toggled.connect(lambda on:self.guard(lambda:self.toggle_symmetry(on)))
+        row=QHBoxLayout();row.addWidget(self.symmetry_side);row.addWidget(QLabel('中线 X'));row.addWidget(self.symmetry_center);symmetry_form.addLayout(row)
+        for widget in (self.symmetry_whole,self.symmetry_auto_center,self.symmetry_live):symmetry_form.addWidget(widget)
+        run=QPushButton('对称选中骨架');run.clicked.connect(lambda:self.guard(self.mirror_bones));symmetry_form.addWidget(run)
+        tip=QLabel('先在视口选骨骼。中线为世界 X；自定义骨骼用 L_ / R_ 配对。\n自动同步等待当前拖动完成，避免打断 Max 撤销；每次同步可单独撤销。');tip.setWordWrap(True);symmetry_form.addWidget(tip)
+        self.skeleton.insertRow(0,'骨架对称',symmetry)
         self.actions(self.skeleton,('为视口选中骨骼加子骨骼',lambda:self.mutate('bone.child',{'name':self.child_name.text(),'length':self.child_length.value()})))
         self.guide_level=QComboBox()
         for title,key in [('顶点','vertex'),('边 / 循环边','edge'),('面','face')]:self.guide_level.addItem(title,key)
@@ -83,6 +97,29 @@ class WorkflowWorkbench(RigWorkbench):
         self.tabs.setCurrentIndex(0)
     def selected_bones(self):
         selected=set(self.selected());return [n['id'] for n in self.nodes if n['id'] in selected and (n.get('workflow')=='bones' or n.get('bone'))]
+    def symmetry_options(self):
+        return dict(side=self.symmetry_side.currentData(),wholeRig=self.symmetry_whole.isChecked(),autoCenter=self.symmetry_auto_center.isChecked(),center=self.symmetry_center.value())
+    def mirror_bones(self):
+        self.stop_symmetry();self.call('symmetry.apply',self.symmetry_options())
+    def toggle_symmetry(self,on):
+        from . import symmetry
+        if not on:symmetry.stop()
+        else:
+            try:symmetry.start(self.symmetry_options(),self,self.symmetry_notice)
+            except Exception:self.stop_symmetry();raise
+            self.notice.setText('自动对称已开启；请编辑选定源侧骨骼。修改范围或方向前先关闭。')
+        for widget in (self.symmetry_side,self.symmetry_whole,self.symmetry_auto_center):widget.setEnabled(not on)
+        self.symmetry_center.setEnabled(not on and not self.symmetry_auto_center.isChecked())
+    def symmetry_notice(self,message):
+        from . import symmetry
+        if symmetry._live is None:self.stop_symmetry()
+        self.notice.setText(message)
+    def stop_symmetry(self):
+        from . import symmetry
+        symmetry.stop()
+        self.symmetry_live.blockSignals(True);self.symmetry_live.setChecked(False);self.symmetry_live.blockSignals(False)
+        for widget in (self.symmetry_side,self.symmetry_whole,self.symmetry_auto_center):widget.setEnabled(True)
+        self.symmetry_center.setEnabled(not self.symmetry_auto_center.isChecked())
     def change_step(self,index):
         self.tabs.setCurrentIndex(index)
         def show_items(layout,visible):

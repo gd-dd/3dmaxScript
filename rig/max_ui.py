@@ -39,7 +39,7 @@ class RigDock(QDockWidget):
         token=str(rt.LXRigSceneToken)
         if token!=self.scene_token:
             from .brush import stop
-            stop();self.scene_token=token;self.queue.clear();self.workbench.set_target(token)
+            stop();self.workbench.stop_symmetry();self.scene_token=token;self.queue.clear();self.workbench.set_target(token)
             self.workbench.notice.setText('Max 场景已切换，请重新读取场景。')
     def refresh_scene(self):
         if not self.closed:
@@ -62,7 +62,7 @@ class RigDock(QDockWidget):
         if item:item[1]({'ok':False,'error':'尚未开始的操作已取消。'})
     def closeEvent(self,event):
         from .brush import stop
-        stop()
+        stop();self.workbench.stop_symmetry()
         self.closed=True;self.queue.clear();self.scene_timer.stop();super().closeEvent(event)
 
 def show_workbench():
@@ -74,4 +74,5 @@ def show_workbench():
     rt.fileIn(str(ROOT/'bridge/rig_context.ms'),quiet=True)
     main=qtmax.GetQMaxMainWindow();_dock=RigDock(main)
     main.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,_dock)
+    _dock.setFloating(True);_dock.resize(_dock.sizeHint())
     _dock.show();_dock.raise_();return _dock
