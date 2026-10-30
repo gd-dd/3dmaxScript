@@ -43,18 +43,57 @@ def visibility(p):
     for n in nodes:n.isHidden=not bool(p['visible'])
     return {'message':'已%s %d 个对象'%('显示' if p['visible'] else '隐藏',len(nodes))}
 
+@H.command('workflow.boxes',True)
+def boxes(p):
+    nodes=members(p['category']);on=bool(p['enabled'])
+    for n in nodes:
+        if on:
+            if not prop(n,'LXPreviousDisplayByLayer'):rt.setUserProp(n,'LXPreviousDisplayByLayer','true' if n.displayByLayer else 'false')
+            n.displayByLayer=False;n.boxMode=True
+        else:
+            n.boxMode=False
+            previous=prop(n,'LXPreviousDisplayByLayer')
+            if previous:n.displayByLayer=previous=='true';rt.setUserProp(n,'LXPreviousDisplayByLayer','')
+    return {'message':'%d 个对象%s包围框显示'%(len(nodes),'开启' if on else '关闭')}
+
+def viewport_state():
+    if not rt.NitrousGraphicsManager.IsEnabled():return {}
+    settings=rt.NitrousGraphicsManager.GetActiveViewportSetting()
+    return {'wireframe':str(settings.VisualStyleMode).lower()=='wireframe','edges':bool(settings.ShowEdgedFacesEnabled),'brackets':bool(settings.ShowSelectionBracketsEnabled)}
+
+@H.command('viewport.display')
+def viewport_display(p):
+    if not rt.NitrousGraphicsManager.IsEnabled():raise ValueError('此显示控制需要 Nitrous 视口')
+    settings=rt.NitrousGraphicsManager.GetActiveViewportSetting()
+    if 'wireframe' in p:settings.VisualStyleMode=rt.Name('Wireframe' if p['wireframe'] else 'Realistic')
+    if 'edges' in p:settings.ShowEdgedFacesEnabled=bool(p['edges'])
+    if 'brackets' in p:settings.ShowSelectionBracketsEnabled=bool(p['brackets'])
+    rt.completeRedraw()
+    return {'message':'已更新当前视口显示；不改变模型、材质或渲染设置','viewport':viewport_state()}
+
 @H.command('humanoid.create',True)
 def create_humanoid(p):
     specs=humanoid.plan(p);created={};rig_id=uuid.uuid4().hex
+    pelvis=specs[0];prefix=str(p.get('prefix','LX')).strip().rstrip('_')
+    center=mark(rt.Point(name=rt.uniqueName((prefix+'_' if prefix else '')+'BodyCenter'),pos=rt.Point3(*pelvis['start']),size=float(p.get('height',170))*.035,box=True,cross=True),'controls','BodyCenter')
+    rt.setUserProp(center,'LXRigId',rig_id);center.wireColor=rt.Color(134,184,61)
     for spec in specs:
-        result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=.15
+        result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=0 if spec['role']=='Pelvis' else .15
         free_bone(b);mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
         if spec['chain']:rt.setUserProp(b,'LXChain',spec['chain'])
-        if spec['parent']:b.parent=created[spec['parent']]
+        b.parent=created[spec['parent']] if spec['parent'] else center
         free_bone(b);created[spec['role']]=b
-    for b in created.values():free_bone(b)
+    # Set final segments after parenting: Max can update Bone stretch while links are attached.
+    for spec in specs:
+        b=created[spec['role']];free_bone(b)
+        set_segment(b,rt.Point3(*spec['start']),rt.Point3(*spec['end']))
+    for spec in specs:
+        parent=next((s for s in specs if s['role']==spec['parent']),None)
+        if parent and binding.distance(parent['end'],spec['start'])<float(p.get('height',170))*1e-8:
+            if float(rt.distance(endpoint(created[parent['role']]),created[spec['role']].pos))>float(p.get('height',170))*1e-5:
+                raise RuntimeError('骨骼关节未连接：'+spec['role'])
     rt.select(H.arr(list(created.values())))
-    return {'message':'已创建 %d 根自由 Bone；无 IK，可移动旋转，长度未锁定'%len(created),'nodes':[H.handle(b) for b in created.values()]}
+    return {'message':'已创建 %d 根自由 Bone；无 IK，可移动旋转，长度未锁定'%len(created),'nodes':[H.handle(b) for b in created.values()],'center':H.handle(center)}
 
 @H.command('bone.child',True)
 def child(p):
@@ -153,7 +192,7 @@ def controls(p):
             old=target.parent;ctrl.parent=old if old else root;tm=rt.copy(target.transform);target.parent=ctrl;target.transform=tm
         count+=1
     # Root motion should carry skeleton roots as well as IK goals.
-    for b in members('bones'):
+    for b in members('bones')+[n for n in members('controls') if prop(n,'LXRole')=='BodyCenter']:
         if b.parent is None:
             tm=rt.copy(b.transform);b.parent=root;b.transform=tm
     return {'message':'世界中心 Root 就绪，创建 %d 个控制器'%count,'root':H.handle(root)}

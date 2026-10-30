@@ -86,3 +86,5 @@ tests/host/legacy_ui_test.py 在真实 Max 中逐个打开动画烘焙、保持�
 旧版完整宿主回归 run_in_max.py 再次通过，包含权重镜像/传递/交换、快照重建、Morpher、骨骼层级和过期场景拒绝。
 
 2026-10-31 骨架修正：独立 Max 中创建 Biped 取样比例及肩、肘位置，普通 Bone 的实际起终点与模板逐根核对通过。symmetry_test.py 验证双向位置/朝向/长度对称、选中子树隔离、撤销重做、自动同步不覆盖撤销、定型后拒绝修改、首次悬浮及重复呼出保持手动停靠，全部通过。23 项 unittest 通过；前视图肩部及新面板截图已检查。
+
+追加验收：BodyCenter 为 Point，Pelvis 为宽骨盆 Bone；旋转骨盆时双腿随动而 Spine 保持，世界 Root 同时携带上下身。workspace_test.py 验证所有预期连续关节无断点、类别包围框不影响外部对象、Nitrous 三类显示状态读回、各步骤保持模型 / Skin 目标、中文层级、1450 宽屏双列与 820 窄窗重排 / 调高、真实按钮队列执行，以及完整 .max 副本写盘，全部通过。27 项 unittest 通过；原完整 workflow_regression.py 再次通过。

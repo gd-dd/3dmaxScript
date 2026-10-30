@@ -132,8 +132,8 @@ def inspect_scene(p):
     if len(nodes)>10000:raise ValueError('场景对象超过 10000，请在简化场景中操作')
     result=[]
     for n in nodes:
-        result.append({'id':handle(n),'name':str(n.name),'class':cls(n),'parent':handle(n.parent) if n.parent else None,'position':vec(n.pos),'geometry':rt.superClassOf(n)==rt.GeometryClass and cls(n)!='BoneGeometry' and not bool(getattr(n,'isBone',False)),'bone':bool(getattr(n,'isBone',False)) or 'Bone' in cls(n) or rt.superClassOf(n)==rt.Helper,'hidden':bool(n.isHidden),'workflow':str(rt.getUserProp(n,'LXWorkflow') or ''),'selected':bool(n.isSelected),'skins':[{'index':i,'name':str(m.name),'handle':handle(m)} for i,m in enumerate(n.modifiers) if cls(m)=='Skin']})
-    return {'scene':str(rt.LXRigSceneToken),'nodes':result,'capabilities':list(COMMANDS),'maxVersion':list(rt.maxVersion())[:3]}
+        result.append({'id':handle(n),'name':str(n.name),'class':cls(n),'parent':handle(n.parent) if n.parent else None,'position':vec(n.pos),'geometry':rt.superClassOf(n)==rt.GeometryClass and cls(n)!='BoneGeometry' and not bool(getattr(n,'isBone',False)),'bone':bool(getattr(n,'isBone',False)) or 'Bone' in cls(n) or rt.superClassOf(n)==rt.Helper,'hidden':bool(n.isHidden),'boxMode':bool(n.boxMode),'workflow':str(rt.getUserProp(n,'LXWorkflow') or ''),'role':str(rt.getUserProp(n,'LXRole') or ''),'rigId':str(rt.getUserProp(n,'LXRigId') or ''),'selected':bool(n.isSelected),'skins':[{'index':i,'name':str(m.name),'handle':handle(m)} for i,m in enumerate(n.modifiers) if cls(m)=='Skin']})
+    return {'scene':str(rt.LXRigSceneToken),'nodes':result,'capabilities':list(COMMANDS),'maxVersion':list(rt.maxVersion())[:3],'viewport':workflow_host.viewport_state()}
 
 @command('nodes.select')
 def select_nodes(p):
@@ -403,3 +403,4 @@ def dispatch(request):
 from . import workflow_host
 from . import brush
 from . import symmetry
+from . import scene_io

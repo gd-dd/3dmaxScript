@@ -6,6 +6,7 @@ from PySide6.QtCore import QTimer
 root=Path(str(rt.LXMaxBridgeRoot))
 if str(root) not in sys.path:sys.path.insert(0,str(root))
 from rig.max_host import dispatch
+from rig import scene_io
 
 def schedule(payload,destination):
     request=json.loads(base64.b64decode(payload).decode('utf-8'));path=Path(destination)

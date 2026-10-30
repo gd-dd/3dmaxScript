@@ -19,8 +19,8 @@ def plan(options):
         return parent
     # Proportions sampled from a standard Max Biped facing -Y, grounded at Z=0.
     # Keep ordinary Bone nodes: no Biped controllers, IK, or fixed lengths.
-    hip=bone('Pelvis',[0,0,.535],[0,0,.59])
-    chest=chain('Spine',[0,0,.59],[0,0,.841],count('spine',3),hip)
+    hip=bone('Pelvis',[0,0,.535],[0,-.035,.535])
+    chest=chain('Spine',[0,0,.59],[0,0,.841],count('spine',3),None)
     neck=chain('Neck',[0,0,.841],[0,0,.877],count('neck',1),chest)
     bone('Head',[0,0,.877],[0,0,1],neck)
     for side,sign in [('L',1),('R',-1)]:
@@ -48,7 +48,7 @@ def plan(options):
 
 def dimensions(role,height):
     """Readable body volumes, including the separate shoulder/clavicle pair."""
-    sizes={'Pelvis':(.10,.06),'Spine':(.08,.055),'Neck':(.025,.025),'Head':(.075,.07),
+    sizes={'Pelvis':(.065,.115),'Spine':(.08,.055),'Neck':(.025,.025),'Head':(.075,.07),
            'Clavicle':(.027,.025),'UpperArm':(.033,.033),'Forearm':(.027,.027),
            'Hand':(.045,.022),'Thigh':(.045,.045),'Calf':(.035,.035),'Foot':(.04,.025)}
     part=role.split('_')[1] if role.startswith(('L_','R_')) else role.split('_')[0]

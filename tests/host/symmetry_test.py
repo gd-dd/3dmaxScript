@@ -6,6 +6,11 @@ from pymxs import runtime as rt
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
 from rig import max_host as H,workflow_host as F,humanoid,symmetry as S
 from rig import max_ui
+S.stop()
+from rig import brush
+for module in (H,humanoid,F,S,brush):importlib.reload(module)
+import rig.workflow_ui as UI
+importlib.reload(UI);importlib.reload(max_ui)
 report={'passed':[]}
 
 def finish(error=None):
@@ -28,11 +33,26 @@ def start():
     global dock,nodes,options,source,target,before
     try:
         rt.resetMaxFile(rt.Name('noPrompt'));rt.fileIn(str(ROOT/'bridge/rig_context.ms'))
-        options=dict(prefix='',height=170,origin=[30,10,0],fingers=5,toes=1)
+        options=dict(prefix='',height=170,origin=[30,10,0],fingers=5,toes=1,upperArm=2,forearm=3)
         result=call('humanoid.create',**options);nodes={F.prop(H.node(i),'LXRole'):H.node(i) for i in result['nodes']}
+        center=H.node(result['center']);assert H.cls(center)=='Point'
+        bounds=rt.nodeGetBoundingBox(nodes['Pelvis'],rt.Matrix3(1));size=bounds[1]-bounds[0]
+        assert float(size.x)>float(size.z),'pelvis must look wider than tall'
+        assert nodes['Pelvis'].parent==center and nodes['Spine_01'].parent==center
+        assert nodes['L_Thigh_01'].parent==nodes['Pelvis'] and nodes['R_Thigh_01'].parent==nodes['Pelvis']
+        spine_tm=rt.copy(nodes['Spine_01'].transform);leg_tm=rt.copy(nodes['L_Thigh_01'].transform);hip_tm=rt.copy(nodes['Pelvis'].transform)
+        rt.rotate(nodes['Pelvis'],rt.Quat(20,rt.Point3(0,0,1)))
+        assert close(nodes['Spine_01'].pos,spine_tm.row4) and close(nodes['Spine_01'].transform.row1,spine_tm.row1)
+        assert not close(nodes['L_Thigh_01'].pos,leg_tm.row4)
+        nodes['Pelvis'].transform=hip_tm
+        report['passed'].append('separate BodyCenter and wide Pelvis; hips rotate legs without spine')
         for spec in humanoid.plan(options):
             n=nodes[spec['role']];assert not str(n.name).startswith('_');assert close(n.pos,rt.Point3(*spec['start']))
             assert close(F.endpoint(n),rt.Point3(*spec['end'])),(spec['role'],str(F.endpoint(n)),spec['end'])
+        report['armMesh']={}
+        for key in ('L_UpperArm_01','L_Forearm_01'):
+            n=nodes[key];mesh=rt.snapshotAsMesh(n);points=[rt.getVert(mesh,i) for i in range(1,int(rt.getNumVerts(mesh))+1)]
+            report['armMesh'][key]={'length':float(n.length),'localMin':[min(float(v[j]) for v in points) for j in range(3)],'localMax':[max(float(v[j]) for v in points) for j in range(3)],'start':H.vec(n.pos),'end':H.vec(F.endpoint(n)),'transform':[H.vec(n.objectTransform.row1),H.vec(n.objectTransform.row2),H.vec(n.objectTransform.row3)]}
         for side in ('L','R'):
             assert nodes[side+'_UpperArm_01'].parent==nodes[side+'_Clavicle']
             assert float(nodes[side+'_Forearm_01'].pos.y)>float(nodes[side+'_UpperArm_01'].pos.y)
@@ -42,7 +62,7 @@ def start():
         rt.select(nodes['Pelvis']);source=nodes['L_Forearm_01'];target=nodes['R_Forearm_01']
         source.pos+=rt.Point3(3,4,5);source.length*=1.15;before=rt.copy(target.transform)
         call('symmetry.apply',side='L',wholeRig=True);mirrored(source,target)
-        rt.execute('max undo');assert close(target.pos,before.row4)
+        rt.execute('max undo');assert close(target.pos,before.row4),(str(target.pos),str(before.row4))
         rt.execute('max redo');mirrored(source,target)
         report['passed'].append('left to right, rotation/length, undo redo')
         target.pos+=rt.Point3(-2,3,1)
@@ -78,6 +98,9 @@ def check_undo():
         except ValueError:pass
         else:raise AssertionError('must reject finalized IK rig')
         report['passed'].append('finalized rig protection')
+        result=call('controls.create',shape='point',size=4)
+        assert nodes['Pelvis'].parent.parent==H.node(result['root'])
+        report['passed'].append('world Root carries BodyCenter and both upper/lower body')
         dock.grab().save(str(ROOT/'tests/symmetry-preview.png'));dock.close();assert S._live is None
         finish()
     except Exception:finish(traceback.format_exc())

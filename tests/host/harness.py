@@ -12,7 +12,7 @@ def tick():
     if not job.exists():return
     task=json.loads(job.read_text('utf-8-sig'));job.unlink()
     try:
-        if task['script'] not in ('max_ui_test.py','legacy_ui_test.py','run_in_max.py','workflow_test.py','workflow_regression.py','symmetry_test.py'):raise ValueError('unknown test')
+        if task['script'] not in ('max_ui_test.py','legacy_ui_test.py','run_in_max.py','workflow_test.py','workflow_regression.py','symmetry_test.py','workspace_test.py'):raise ValueError('unknown test')
         runpy.run_path(str(ROOT/'tests/host'/task['script']))
     except Exception:
         (ROOT/'tests/host/harness-report.json').write_text(json.dumps({'ok':False,'error':traceback.format_exc()}),'utf-8')

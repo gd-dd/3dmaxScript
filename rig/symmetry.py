@@ -55,8 +55,10 @@ def resolve(p):
 def center_for(n,p):
     if not p.get('autoCenter',True):return H.W.finite(p.get('center',0))
     rig=F.prop(n,'LXRigId')
+    centers=[b for b in F.members('controls') if rig and F.prop(b,'LXRigId')==rig and F.prop(b,'LXRole')=='BodyCenter']
+    if len(centers)==1:return float(centers[0].pos.x)
     pelvis=[b for b in F.members('bones') if rig and F.prop(b,'LXRigId')==rig and F.prop(b,'LXRole')=='Pelvis']
-    if len(pelvis)!=1:raise ValueError('找不到骨架中线，请关闭自动中线并填写世界 X 坐标')
+    if len(pelvis)!=1:raise ValueError('找不到身体质心或骨盆中线，请关闭自动中线并填写世界 X 坐标')
     return float(pelvis[0].pos.x)
 
 def state(n):

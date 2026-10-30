@@ -29,12 +29,12 @@ class RigDock(QDockWidget):
         content.setStyleSheet(STYLE);apply_popup_palette(content)
         content.setAutoFillBackground(True)
         palette=content.palette();palette.setColor(content.backgroundRole(),'#FFFFFF');content.setPalette(palette)
-        self.setMinimumWidth(520)
+        self.setMinimumSize(680,480)
         qtmax.DisableMaxAcceleratorsOnFocus(self,True)
         self.scene_timer=QTimer(self);self.scene_timer.setInterval(500);self.scene_timer.timeout.connect(self.check_scene);self.scene_timer.start()
         QTimer.singleShot(0,self.refresh_scene)
 
-    def sizeHint(self):return QSize(650,780)
+    def sizeHint(self):return QSize(1120,760)
     def check_scene(self):
         token=str(rt.LXRigSceneToken)
         if token!=self.scene_token:
