@@ -27,7 +27,7 @@ class SelectionMixin:
         frame_layout=QVBoxLayout(self.object_frame);frame_layout.setContentsMargins(0,0,0,0);frame_layout.setSpacing(0)
         self.category_split=QSplitter(Qt.Orientation.Vertical);self.category_split.setChildrenCollapsible(False);self.category_split.setHandleWidth(5)
         self.category_split.setStyleSheet('QSplitter::handle {background:#dbe5c9;}')
-        self.role_tabs=QTabWidget();self.role_tabs.setDocumentMode(True)
+        self.role_tabs=QTabWidget();self.role_tabs.tabBar().setDrawBase(False)
         for key,title in [('models','模型 · 多选处理目标'),('bones','骨骼'),('controls','控制器')]:
             tree=QTreeWidget();prepare_tree(tree);tree.setMinimumHeight(65);tree.setFrameShape(QFrame.Shape.NoFrame)
             tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)

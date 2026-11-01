@@ -66,7 +66,7 @@
     "rig/scene_ui.py": "ef92a1e8433a0fa682b4eea53f77b5cb41c527da1cb3555f7194421af90907ae",
     "rig/scene_io.py": "9de09bc043d11b1bfd29d702e695f9ce70d430f48a2edc0ca1bbd9016421ab00",
     "rig/batch_host.py": "701e0a22dc7607b2d396a0f4357dfaa0d3906dca3c362e6ad2df645351e9966a",
-    "rig/selection_ui.py": "64f06595e80d033f9b05e3498df5af85fadfdfb307b9542bcbf47080540a752d",
+    "rig/selection_ui.py": "ad3ad713227a7c13256b9f2c433e836fecd7c9be34a39711f33b7c3065c3617e",
     "rig/weight_view.py": "7a15c4fee483ab29dea5895ba7a1433c7630b54fe3642a194f7f7889163102f4",
     "rig/weight_view.ms": "0242e8a5a630c6e6a0b95215537b90dead12d427ab983ad97313c9a539ebbdb4"
   },
