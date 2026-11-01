@@ -46,7 +46,7 @@
     "bridge/rig_entry.py": "982ff95bd54a679b84368127d6468e8fdc7847856290339bccd21447dbe77d3d",
     "rig/workbench.py": "5ddfcf215d88fd542539ff296c058012d43c69af73ee61dff043e960924ebc9c",
     "rig/max_ui.py": "f18cc527bea723b416dbc2bfcd8a4d5a8b3950a2f9e063c052404bb70263294b",
-    "bridge/open_rig.py": "08aaaba40ad45a19b4e507b27d4878540afb60fd6534ea6d935835af8b91cd0b",
+    "bridge/open_rig.py": "2ce90875b5ac57d03d114c7583ddda23886c2eb54fb202b89bbbdfafb80fa580",
     "bridge/rig_context.ms": "df9a7e73a671ffcae6d52fbf380ccf34e0bd42f33f19b740ced508916546ffd1",
     "LX_RigSkin.ms": "98a5430e739f12f845c834b7e4827640c9d6bee14eb239b33fbff5ec849075f8",
     "ui/legacy_theme.ms": "d64da07116962a5ec0ac12cdaa9eb7117c6d1e2faa023a3ec0519c5bb1b8c305",

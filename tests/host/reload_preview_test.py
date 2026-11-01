@@ -8,7 +8,8 @@ ROOT=Path(__file__).resolve().parents[2];r={'passed':[]}
 def start():
  try:
   states=history._states;nodes={H.handle(n) for n in rt.objects};scene=str(rt.LXRigSceneToken)
-  runpy.run_path(str(ROOT/'bridge/open_rig.py'))
+  # Bridge fileIn can evaluate this entry inside a Max startup transaction.
+  with H.pymxs.undo(True):runpy.run_path(str(ROOT/'bridge/open_rig.py'))
   from rig import max_ui as ui,max_host as host
   assert history._states is states and str(rt.LXRigSceneToken)==scene and nodes=={host.handle(n) for n in rt.objects}
   first=ui._dock;runpy.run_path(str(ROOT/'bridge/open_rig.py'));assert ui._dock is first

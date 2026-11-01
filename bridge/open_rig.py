@@ -11,7 +11,10 @@ ui=sys.modules.get('rig.max_ui')
 if ui is not None and getattr(ui,'_code_digest',None)!=digest:
     from pymxs import runtime as rt
     from shiboken6 import isValid
-    if rt.theHold.Holding():raise RuntimeError('请先结束当前拖动或笔划，再重新呼出工具。')
+    # MAXScript fileIn itself can hold an undo transaction. Only an active
+    # brush stroke owns state that closing this dock would cancel.
+    active=getattr(sys.modules.get('rig.brush'),'_active',None)
+    if active is not None and active.holding:raise RuntimeError('请先结束当前笔划，再重新呼出工具。')
     dock=getattr(ui,'_dock',None)
     if dock is not None and isValid(dock):dock.close()
     for name in ('rig.brush','rig.symmetry'):
