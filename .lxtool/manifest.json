@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "管理 Max 实例，在 Max 内完成骨骼、蒙皮、权重与表情流程。",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -36,7 +36,7 @@
     ".lxtool/panel.json": "7692bf6b7411a17ce635ee3243bcc00f568686e5ecaddf0d0d304d675286fee3",
     ".lxtool/README.md": "7e401f0d11587819ed12e453bba2af2da0b8b019a4d98c0c98bf1649738cc506",
     "bridge/LXMaxBridge.ms": "a84e5ea1ef117ed11254b290c4f24119c22fe32e94dfe8c06360d88d3ff7d355",
-    "bin/LXMaxSession.exe": "1bfe2fae9d0dbb112906980cb88ea357a240e1b686ff7de0a0d9b63b2c9aeb8a",
+    "bin/LXMaxSession.exe": "0ada586d071ed5a072e063da9f47c8ab6a9cbe38fe38bdf7a084f97e7833d103",
     "ui/panel.py": "983b56cf4597e988ad868ad43e9981d2cf9256ce7d75ed8353adf29cdfae3d5c",
     "ui/tools.json": "b737d45686976d18495e0bd29b4bca0121f4c0a6b9cfd37c4bd6c51ff742b659",
     "ui/transport.py": "2ad7fb6f0ba7b78a72e24c5c59b427aa30abe5b33e6b34f9675305813aea63c4",
@@ -70,7 +70,7 @@
     "rig/weight_view.py": "7a15c4fee483ab29dea5895ba7a1433c7630b54fe3642a194f7f7889163102f4",
     "rig/weight_view.ms": "0242e8a5a630c6e6a0b95215537b90dead12d427ab983ad97313c9a539ebbdb4"
   },
-  "releaseNotes": "开发快照：拖动完整骨架预览、骨盆朝向与分段 IK；三栏目独立多选、逐模型确认蒙皮、常驻合计权重色和混合选择；修复变换模型与外部骨骼体素绑定。",
-  "publishedAt": "2026-10-30",
-  "minClientVersion": "0.5.0"
+  "releaseNotes": "新增分阶段骨架与蒙皮工作流、骨架对称、批量蒙皮、权重笔刷及常驻权重色；支持全部 Max 窗口发现与自动连接；优化模型/骨骼/控制器选择和窗口缩放性能。",
+  "publishedAt": "2026-11-01",
+  "minClientVersion": "0.0.2"
 }
