@@ -59,4 +59,4 @@
 
 [Graphite 循环与环形接口](https://help.autodesk.com/cloudhelp/2024/ENU/MAXScript-Help/files/3ds-Max-Objects-and-Interfaces/Editable-Meshes-Splines-Patches/Editable_Poly/PolyTools-Interfaces/GUID-D5CB1C50-7CB5-4ADB-BDC3-B7E2A88A192D.html)
 
-同一个安装目录的快照更新后，再次呼出工具会检查源码摘要并重载实现，保留场景和权重撤销历史；正在拖动或绘制时会要求先结束当前操作。不同安装路径的版本切换仍需重新启动 Max。
+同一个安装目录的快照更新后，再次呼出工具会检查源码摘要并重载实现，保留场景和权重撤销历史；笔刷笔划尚未结束时会要求先结束绘制。不同安装路径的版本切换仍需重新启动 Max。

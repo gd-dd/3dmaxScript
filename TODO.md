@@ -116,7 +116,9 @@
 - [x] 修复体素距离场，覆盖外部骨骼、多部件、变换模型
 - [x] 点 / 面循环和环形选择（两个种子）；混合点线面选择
 - [x] 自动测试、独立 Max 实测、UI 验证、清单打包
-- [ ] GitHub 推送与本地快照更新，不发布 Release，不关机
+- [x] GitHub 推送与本地快照更新，不发布 Release，不关机
 - [ ] 用户生产模型与交互手感复验
 
 验证：32 项 Python / Qt 测试通过；Max 2026 usability、live-weight、workflow regression、reload-preview 均通过。独立 Max 中实际检查多模型权重色与人体拖动预览图片。
+
+实际安装验收：44 个资源摘要一致；原有 Untitled_recover.max 实例通过安装版入口成功重载新版，未重启或重置用户 Max。MAXScript 启动事务误判已修复，重载回归通过。
