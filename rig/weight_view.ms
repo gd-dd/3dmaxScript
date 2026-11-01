@@ -1,7 +1,8 @@
-global LXWeightViewData = #(), LXWeightViewDraw
+global LXWeightViewData = #(), LXWeightViewDraw, LXWeightViewSuspended = false
 if LXWeightViewDraw != undefined do unregisterRedrawViewsCallback LXWeightViewDraw
 fn LXWeightViewDraw =
 (
+    if LXWeightViewSuspended or LXWeightViewData.count == 0 do return undefined
     local limits = gw.getRndLimits()
     gw.setTransform (matrix3 1)
     gw.setRndLimits #(#colorVerts, #illum, #zBuffer)

@@ -1,6 +1,6 @@
 """Independent object roles and a resumable, per-model binding queue."""
-from PySide6.QtCore import Qt,QTimer,QEvent
-from PySide6.QtWidgets import QTreeWidget,QTreeWidgetItem,QHeaderView,QAbstractItemView,QSplitter,QWidget,QVBoxLayout,QLabel,QPushButton
+from PySide6.QtCore import Qt,QTimer
+from PySide6.QtWidgets import QTreeWidget,QTreeWidgetItem,QHeaderView,QAbstractItemView,QSplitter,QWidget,QVBoxLayout,QLabel,QPushButton,QFrame,QTabWidget
 from .scene_ui import role_label,prepare_tree
 
 def category(node):
@@ -16,26 +16,44 @@ def items(tree):
 
 class SelectionMixin:
     def build_categories(self,layout):
-        self.tree.hide();self.category_trees={};self.category_split=QSplitter(Qt.Orientation.Vertical)
-        for key,title in [('models','模型 · 多选处理目标'),('bones','骨骼 · 多选影响范围'),('controls','控制器 · 场景操作')]:
-            box=QWidget();v=QVBoxLayout(box);v.setContentsMargins(0,0,0,0);v.addWidget(QLabel(title))
-            tree=QTreeWidget();prepare_tree(tree);tree.setMinimumHeight(65);tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-            tree.setMinimumHeight(100 if key=='models' else 65)
-            tree.setHeaderLabels(['名称 / 层级','部位','影响值']);tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);v.addWidget(tree)
-            self.category_trees[key]=tree;self.category_split.addWidget(box)
+        self.tree.hide();self.category_trees={}
+        self.object_frame=QFrame();self.object_frame.setObjectName('objectBrowser')
+        self.object_frame.setStyleSheet('''#objectBrowser {border:1px solid #dbe5c9; border-radius:5px; background:white;}
+            #objectBrowser QTreeWidget {border:0; background:white;}
+            #objectBrowser QTabWidget::pane {border:0; background:white;}
+            #objectBrowser QTabBar {background:white;}
+            #objectBrowser QTabBar::tab {background:white; color:#507522; padding:6px 12px; border:0;}
+            #objectBrowser QTabBar::tab:selected {background:#edf5df; border-bottom:2px solid #86b83d;}''')
+        frame_layout=QVBoxLayout(self.object_frame);frame_layout.setContentsMargins(0,0,0,0);frame_layout.setSpacing(0)
+        self.category_split=QSplitter(Qt.Orientation.Vertical);self.category_split.setChildrenCollapsible(False);self.category_split.setHandleWidth(5)
+        self.category_split.setStyleSheet('QSplitter::handle {background:#dbe5c9;}')
+        self.role_tabs=QTabWidget();self.role_tabs.setDocumentMode(True)
+        for key,title in [('models','模型 · 多选处理目标'),('bones','骨骼'),('controls','控制器')]:
+            tree=QTreeWidget();prepare_tree(tree);tree.setMinimumHeight(65);tree.setFrameShape(QFrame.Shape.NoFrame)
+            tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+            tree.setHeaderLabels(['名称 / 层级','部位','影响值']);tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
+            self.category_trees[key]=tree
+            if key=='models':
+                box=QWidget();v=QVBoxLayout(box);v.setContentsMargins(0,4,0,0);v.addWidget(QLabel(title));v.addWidget(tree)
+                self.category_split.addWidget(box)
+            else:self.role_tabs.addTab(tree,title)
             tree.itemSelectionChanged.connect(lambda c=key:self.category_changed(c))
-        layout.addWidget(self.category_split,1);self.category_split.setSizes([130,270,85])
+        self.category_split.addWidget(self.role_tabs);self.category_split.setSizes([180,300])
+        frame_layout.addWidget(self.category_split);layout.addWidget(self.object_frame,1)
         self.influence_button=QPushButton('选出所选模型的影响骨骼');self.influence_button.clicked.connect(lambda:self.guard(self.select_model_influences));layout.addWidget(self.influence_button)
         self.weight_summary=QLabel('模型选择与骨骼选择互不覆盖。');self.weight_summary.setWordWrap(True);layout.addWidget(self.weight_summary)
+        self._preview_dirty=True;self._preview_signature=None
         self._bind_queue=[];self._bind_pool=[];self._bind_done=0;self._batch_auto=False;self._skin_bones={}
         self.preview_timer=QTimer(self);self.preview_timer.setInterval(600);self.preview_timer.timeout.connect(self.refresh_weight_view)
         if hasattr(self.owner,'scene_token'):self.preview_timer.start()
 
-    def eventFilter(self,watched,event):
-        if hasattr(self,'scene_scroll') and watched==self.scene_scroll.viewport() and event.type()==QEvent.Type.Resize:
-            overhead=self.shared_scene.layout().sizeHint().height()-self.category_split.sizeHint().height()
-            self.category_split.setMaximumHeight(max(self.category_split.minimumSizeHint().height(),watched.height()-overhead-12))
-        return super().eventFilter(watched,event)
+    def invalidate_preview(self,*_):self._preview_dirty=True
+
+    def call(self,action,params=None,callback=None):
+        def done(data):
+            self.invalidate_preview()
+            if callback:callback(data)
+        return super().call(action,params,done)
 
     def selected_models(self):return ids(self.category_trees['models']) if hasattr(self,'category_trees') else []
     def selected_bones(self):
@@ -51,7 +69,7 @@ class SelectionMixin:
             chosen=self.selected_models();current=self.category_trees[key].currentItem()
             ref=current.data(0,Qt.ItemDataRole.UserRole) if current else (chosen[0] if chosen else None)
             if ref in chosen:self.mesh.setCurrentIndex(self.mesh.findData(ref))
-        self._skin_bones={}
+        self._skin_bones={};self.invalidate_preview()
         if hasattr(self.owner,'scene_token'):
             from . import brush,max_host as H
             active=brush._active
@@ -77,7 +95,7 @@ class SelectionMixin:
                     i.setSelected(n['id'] in selected);i.setExpanded(n['id'] in expanded or not expanded)
                 tree.blockSignals(False)
             self.filter_categories()
-        finally:self._loading_categories=False
+        finally:self._loading_categories=False;self.invalidate_preview()
     def filter_categories(self):
         from .scene_ui import filter_tree
         for tree in getattr(self,'category_trees',{}).values():filter_tree(tree,self.nodes,self.scene_search.text(),self.workflow_only.isChecked())
@@ -90,13 +108,17 @@ class SelectionMixin:
         if not meshes:raise ValueError('请在模型栏多选一个或多个模型')
         self.call('bind.influences',{'meshes':meshes},lambda d:self.choose_bone_nodes(set(d['bones'])))
     def refresh_weight_view(self):
-        if self.busy or getattr(self,'_preview_running',False) or not self.scene or not hasattr(self,'color_view'):return
+        if self.busy or getattr(self,'_preview_running',False) or getattr(self.owner,'_preview_resizing',False) or not self.scene or not hasattr(self,'color_view') or not self.isVisible():return
         from . import weight_view,max_host as H
         if H.rt.theHold.Holding():return
         self._preview_running=True
         enabled=self.color_view.isChecked() and self.steps.currentIndex()==6
+        signature=None
         try:
+            signature=weight_view.signature(self.selected_models(),self.selected_bones(),self.steps.currentIndex(),self.color_view.isChecked())
+            if not self._preview_dirty and signature==self._preview_signature:return
             rows=weight_view.update(self.selected_models(),self.selected_bones(),enabled)
+            self._preview_signature=signature;self._preview_dirty=False
             means={};summary=[];self.vertex_values.clear()
             for row in rows:
                 if not row['bound']:summary.append(row['name']+'：未蒙皮');continue
@@ -111,6 +133,7 @@ class SelectionMixin:
                 row=next((r for r in rows if r['mesh']==i.data(0,Qt.ItemDataRole.UserRole)),None)
                 i.setText(2,'%.3f'%row['mean'] if row and row['bound'] else '')
         except Exception as e:
+            self._preview_signature=signature;self._preview_dirty=False
             weight_view.clear();self.weight_summary.setText('权重预览：'+str(e))
         finally:self._preview_running=False
     def bind_options(self):return dict(method=self.bind_method.currentData(),limit=self.bind_limit.value(),falloff=self.falloff.value(),resolution=self.resolution.value())

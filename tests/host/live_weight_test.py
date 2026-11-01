@@ -1,4 +1,4 @@
-"""Brush overlay refresh, restored selection and compact three-column layout."""
+"""Brush overlay refresh, restored selection and two-pane object browser."""
 import sys,json,traceback,importlib
 from pathlib import Path
 from PySide6.QtCore import QTimer,Qt
@@ -32,12 +32,12 @@ def start():
  except Exception:finish(traceback.format_exc())
 def layout_done():
  try:
-  assert w.category_split.height()<=w.scene_scroll.viewport().height()-100
+  assert w.category_split.count()==2 and w.category_split.height()<=w.shared_scene.height()
   w.refresh_weight_view();assert len(rt.LXWeightViewData)==2
   dock.grab().save(str(ROOT/'tests/usability-preview.png'))
   rt.select(H.arr([a,b]));rt.execute('max zoomext sel');rt.completeRedraw()
   bmp=rt.gw.getViewportDib();bmp.filename=str(ROOT/'tests/weight-colors-preview.png');rt.save(bmp);rt.close(bmp)
-  r['passed'].append('three category lists fit viewport; two models show different selected-bone weights')
+  r['passed'].append('two object panes fit viewport; two models show different selected-bone weights')
   # Automatic mode processes both models without any confirmation callbacks.
   w.steps.setCurrentIndex(5);w.choose_bone_nodes({first,second});w.start_bind_queue(True);QTimer.singleShot(1000,auto_done)
  except Exception:finish(traceback.format_exc())

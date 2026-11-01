@@ -28,7 +28,8 @@ class Columns(QWidget):
                 elif field is not None:form.addRow(field)
             self.box.addWidget(column,1)
     def resizeEvent(self,event):
-        self.box.setDirection(QBoxLayout.Direction.LeftToRight if self.width()>=690 else QBoxLayout.Direction.TopToBottom)
+        direction=QBoxLayout.Direction.LeftToRight if self.width()>=690 else QBoxLayout.Direction.TopToBottom
+        if self.box.direction()!=direction:self.box.setDirection(direction)
         super().resizeEvent(event)
 
 def split_form(form,split):

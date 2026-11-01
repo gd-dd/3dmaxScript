@@ -148,8 +148,7 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         self.context_summary=QLabel('读取一次场景，各步骤共用对象和当前模型。');self.context_summary.setWordWrap(True);left.addWidget(self.context_summary)
         self.scene_search.textChanged.connect(self.filter_scene_tree);self.workflow_only.toggled.connect(self.filter_scene_tree)
         # Object roles keep independent selection sets.
-        self.scene_scroll=QScrollArea();self.scene_scroll.setWidgetResizable(True);self.scene_scroll.setFrameShape(QFrame.Shape.NoFrame);self.scene_scroll.setWidget(self.shared_scene);self.scene_scroll.setMinimumWidth(270);self.scene_scroll.viewport().installEventFilter(self)
-        self.splitter=QSplitter(Qt.Orientation.Horizontal);self.splitter.addWidget(self.scene_scroll);self.splitter.addWidget(self.tabs)
+        self.splitter=QSplitter(Qt.Orientation.Horizontal);self.splitter.addWidget(self.shared_scene);self.splitter.addWidget(self.tabs)
         self.splitter.setChildrenCollapsible(False);self.splitter.setStretchFactor(0,0);self.splitter.setStretchFactor(1,1);self.splitter.setSizes([330,720]);body_layout.addWidget(self.splitter,1)
         self.layout().setStretchFactor(self.body,1)
         self.shared_scene.setMinimumWidth(260);self.tabs.setMinimumWidth(340)
@@ -173,7 +172,7 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         if not hasattr(self,'scene_search'):return
         from .scene_ui import filter_tree
         filter_tree(self.tree,self.nodes,self.scene_search.text(),self.workflow_only.isChecked());self.filter_categories()
-    def change_step(self,index):self.tabs.setCurrentIndex(index)
+    def change_step(self,index):self.tabs.setCurrentIndex(index);self.invalidate_preview()
     def visibility(self,category,visible,button,title):
         button.setText(title+(' 显示' if visible else ' 隐藏'));self.call('workflow.visibility',{'category':category,'visible':visible})
     def humanoid_options(self):return dict(height=self.rig_height.value(),prefix=self.rig_prefix.text(),**{k:v.value() for k,v in self.chain_counts.items()})

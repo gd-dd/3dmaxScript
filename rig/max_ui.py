@@ -32,9 +32,19 @@ class RigDock(QDockWidget):
         self.setMinimumSize(680,480)
         qtmax.DisableMaxAcceleratorsOnFocus(self,True)
         self.scene_timer=QTimer(self);self.scene_timer.setInterval(500);self.scene_timer.timeout.connect(self.check_scene);self.scene_timer.start()
+        self._preview_resizing=False
+        self.resize_timer=QTimer(self);self.resize_timer.setSingleShot(True);self.resize_timer.setInterval(250);self.resize_timer.timeout.connect(self.finish_resize)
         QTimer.singleShot(0,self.refresh_scene)
 
     def sizeHint(self):return QSize(1120,760)
+    def resizeEvent(self,event):
+        if hasattr(self,'resize_timer'):
+            from .weight_view import suspend
+            self._preview_resizing=True;suspend(True);self.resize_timer.start()
+        super().resizeEvent(event)
+    def finish_resize(self):
+        from .weight_view import suspend
+        self._preview_resizing=False;suspend(False);rt.redrawViews()
     def check_scene(self):
         token=str(rt.LXRigSceneToken)
         if token!=self.scene_token:
@@ -67,7 +77,7 @@ class RigDock(QDockWidget):
         stop();self.workbench.stop_symmetry();self.workbench.preview_timer.stop()
         from .weight_view import clear
         clear()
-        self.closed=True;self.queue.clear();self.scene_timer.stop();super().closeEvent(event)
+        self.closed=True;self.queue.clear();self.scene_timer.stop();self.resize_timer.stop();super().closeEvent(event)
 
 def show_workbench():
     global _dock

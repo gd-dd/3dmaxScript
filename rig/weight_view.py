@@ -8,6 +8,18 @@ _models=[]
 _refs=[]
 _bones=set()
 
+def signature(meshes,bones,step,enabled):
+    """Cheap invalidation probe: no SkinOps, mesh snapshots or redraw calls."""
+    state=[]
+    for ref in meshes:
+        obj=H.node(ref);skin=batch_host.get_skin(obj)
+        revision=str(skin.lxWeightRevision) if skin is not None and rt.isProperty(skin,'lxWeightRevision') else ''
+        state.append((ref,H.handle(skin) if skin is not None else None,revision,str(obj.objectTransform),bool(obj.isHidden)))
+    return (str(rt.LXRigSceneToken),str(rt.currentTime),tuple(state),tuple(bones),step,enabled)
+
+def suspend(on):
+    if _loaded:rt.LXWeightViewSuspended=bool(on)
+
 def color(value):
     t=max(0,min(1,value))*4;i=min(3,int(t));f=t-i
     stops=((30,65,210),(0,190,240),(60,210,70),(250,210,20),(240,45,30))
@@ -15,9 +27,10 @@ def color(value):
 
 def clear():
     global _models,_refs
-    _models=[];_refs=[]
+    had_models=bool(_models);_models=[];_refs=[]
     if _loaded:
-        rt.LXWeightViewData=rt.Array();rt.redrawViews()
+        rt.LXWeightViewData=rt.Array()
+        if had_models:rt.redrawViews()
 
 def update(meshes,bones,enabled=True):
     global _loaded,_models,_refs,_bones

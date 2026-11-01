@@ -43,6 +43,33 @@ class SharedSceneTests(unittest.TestCase):
     def test_segment_bending_off_and_mixed_selection_present(self):
         self.assertFalse(self.w.bend_segments.isChecked());self.assertGreaterEqual(self.w.component.findData('mixed'),0)
         self.assertTrue(self.w.color_view.isChecked())
+    def test_two_panes_keep_three_independent_selections_after_resizing(self):
+        self.w.show()
+        for tree in self.w.category_trees.values():tree.topLevelItem(0).setSelected(True)
+        self.assertEqual(self.w.category_split.count(),2)
+        for width,height in [(800,600),(1500,1400),(950,700)]*8:
+            self.w.resize(width,height);self.app.processEvents()
+        for index in (1,0,1,0):self.w.role_tabs.setCurrentIndex(index)
+        self.assertEqual(self.w.selected_models(),['mesh1']);self.assertEqual(self.w.selected_bones(),['hip'])
+        self.assertEqual(set(self.w.selected()),{'hip','center'})
+        self.assertGreater(self.w.category_split.height(),150)
+        self.w.close()
+    def test_idle_preview_does_not_reread_weights_and_resize_defers_work(self):
+        import sys
+        from types import SimpleNamespace
+        from unittest.mock import Mock,patch
+        view=SimpleNamespace(signature=lambda *args:tuple(map(str,args)),update=Mock(return_value=[]),clear=Mock())
+        host=SimpleNamespace(rt=SimpleNamespace(theHold=SimpleNamespace(Holding=lambda:False)))
+        self.w.show();self.app.processEvents()
+        with patch.dict(sys.modules,{'rig.weight_view':view,'rig.max_host':host}),patch('rig.weight_view',view,create=True),patch('rig.max_host',host,create=True):
+            self.w.invalidate_preview()
+            for _ in range(20):self.w.refresh_weight_view()
+            self.assertEqual(view.update.call_count,1)
+            self.w.owner._preview_resizing=True;self.w.invalidate_preview();self.w.refresh_weight_view()
+            self.assertEqual(view.update.call_count,1)
+            self.w.owner._preview_resizing=False;self.w.refresh_weight_view()
+            self.assertEqual(view.update.call_count,2)
+        self.w.close()
     def test_role_labels_distinguish_sides_and_chain_links(self):
         self.assertEqual(role_label({'role':'L_UpperArm_02'}),'左 · 上臂 · 02')
         self.assertEqual(role_label({'role':'R_Clavicle'}),'右 · 肩 / 锁骨')
