@@ -14,7 +14,7 @@ def members(category=None):return [n for n in rt.objects if prop(n,'LXWorkflow')
 def bit(ids):return rt.execute('#{'+','.join(str(int(i)) for i in ids)+'}')
 def ids(bits):return [int(i) for i in rt.execute('fn LXBitIds b = b as array')(bits)]
 def free_bone(b):
-    b.setBoneEnable(True,rt.currentTime);b.boneAutoAlign=True;b.boneFreezeLength=False;b.boneScaleType=rt.Name("scale")
+    b.setBoneEnable(True,rt.currentTime);b.boneAutoAlign=prop(b,'LXRole')!='Pelvis';b.boneFreezeLength=False;b.boneScaleType=rt.Name("scale")
 
 def endpoint(b):return b.objectTransform.row4+b.objectTransform.row1*float(b.length) if H.cls(b)=='BoneGeometry' else b.pos
 
@@ -133,6 +133,7 @@ def poly(obj):
 def is_modifier(value):return H.cls(value)=='Edit_Poly'
 def selected_poly_vertices(obj,level):
     base=poly(obj)
+    if level=='mixed':level=str(base.GetEPolySelLevel()).lower()
     if is_modifier(base):
         if level!='vertex':base.ConvertSelection(rt.Name(level),rt.Name('vertex'),requireAll=False)
         return ids(base.GetSelection(rt.Name('vertex'),node=obj))
@@ -174,9 +175,16 @@ def finalize(p):
         if len(terminal)!=1:raise ValueError('手或脚末端不完整：'+name)
         goal=rt.IKSys.ikChain(start,terminal[0],'IKHISolver')
         if goal is None:raise ValueError('Max 未能创建 IK：'+name)
+        # Only shoulder/elbow (or hip/knee) joints bend unless segment bending is requested.
+        for link in links:
+            role=prop(link,'LXRole');intermediate=role.rsplit('_',1)[-1]!='01'
+            active=bool(p.get('bendSegments',False)) or not intermediate
+            for axis in 'XYZ':
+                rt.setProperty(link.controller,rt.Name('Rot'+axis+'Active'),active)
+                rt.setProperty(link.controller,rt.Name('Pos'+axis+'Active'),False)
         goal.name=rt.uniqueName('LX_'+name+'_IK');mark(goal,'controls','IK');rt.setUserProp(goal,'LXRigId',rig_id);goals.append(goal)
     for b in bones:
-        if H.cls(b)=='BoneGeometry':b.setBoneEnable(True,rt.currentTime);b.boneFreezeLength=True;b.boneAutoAlign=True;rt.setUserProp(b,'LXFinalized','true')
+        if H.cls(b)=='BoneGeometry':b.setBoneEnable(True,rt.currentTime);b.boneFreezeLength=True;b.boneAutoAlign=prop(b,'LXRole')!='Pelvis';rt.setUserProp(b,'LXFinalized','true')
     return {'message':'已固定 %d 根骨骼长度，建立 %d 条肢体 HI IK；脊柱/手指保留 FK'%(len(bones),len(goals)),'goals':[H.handle(n) for n in goals]}
 
 @H.command('controls.create',True)
@@ -208,14 +216,22 @@ def controls(p):
 @H.command('bind.auto',True)
 def auto_bind(p):
     obj=H.mesh(p)
+    if not p.get('skinHandle'):
+        existing=next((i for i,m in enumerate(obj.modifiers) if H.cls(m)=='Skin'),None)
+        if existing is not None:p=dict(p,skin=existing)
     if not any(H.cls(m)=='Skin' for m in obj.modifiers):
         bones=p.get('bones') or [H.handle(n) for n in members('bones')]
         H.bind(dict(p,bones=bones));p=dict(p,skin=0,skinHandle=None)
     s=H.skin(obj,p)
+    requested=set(map(str,p.get('bones',[])))
+    if requested:
+        known={b['node'] for b in H.influences(s)}
+        for ref in requested-known:rt.skinOps.addBone(s,H.node(ref),1)
     if p.get('method')=='envelope':return {'message':'Skin 包络绑定完成'}
     data=H.skin_data(obj,s);points=[H.vec(rt.Point3(*v)*obj.objectTransform) for v in data['positions']]
     segments=[]
     for b in data['bones']:
+        if requested and b['node'] not in requested:continue
         bone=H.node(b['node']);segments.append((b['id'],H.vec(bone.pos),H.vec(endpoint(bone))))
     rows,stats=binding.solve(points,data['faces'],segments,p.get('method','segment'),int(p.get('limit',4)),float(p.get('falloff',2)),int(p.get('resolution',32)))
     H.backup(data,'自动蒙皮前');s.bone_Limit=int(p.get('limit',4));H.write_rows(s,rows)
@@ -234,17 +250,21 @@ def multi(p):
 @H.command('selection.mode',True)
 def selection_mode(p):
     obj=H.mesh(p);base=poly(obj);rt.select(obj);rt.execute('max modify mode');rt.modPanel.setCurrentObject(base);rt.showEndResult=True
-    rt.subObjectLevel={'vertex':1,'edge':2,'face':4}[p['level']]
-    if is_modifier(base):base.SetEPolySelLevel(rt.Name(p['level']))
-    return {'message':'在视口选择'+{'vertex':'顶点','edge':'边','face':'面'}[p['level']]}
+    level=p['level'];base.selectMode=2 if level=='mixed' else 0
+    rt.subObjectLevel={'vertex':1,'edge':2,'face':4,'mixed':1}[level]
+    if is_modifier(base):base.SetEPolySelLevel(rt.Name('vertex' if level=='mixed' else level))
+    return {'message':'混合选择：靠近点、边或面即可点击选择' if level=='mixed' else '在视口选择'+{'vertex':'顶点','edge':'边','face':'面'}[level]}
 
 @H.command('selection.expand',True)
 def expand_selection(p):
     obj=H.mesh(p);base=poly(obj);rt.select(obj);rt.execute('max modify mode');rt.modPanel.setCurrentObject(base)
-    op=p['operation'];level=p.get('level','edge');rt.subObjectLevel={'vertex':1,'edge':2,'face':4}[level]
+    op=p['operation'];level=p.get('level','edge')
+    if level=='mixed':level=str(base.GetEPolySelLevel()).lower()
+    rt.subObjectLevel={'vertex':1,'edge':2,'face':4}[level]
     if op in ('loop','ring'):
-        if level!='edge':raise ValueError('循环/环选请先切到边模式')
-        base.ButtonOp(rt.Name('SelectEdgeLoop' if op=='loop' else 'SelectEdgeRing'))
+        if is_modifier(base):base.SetEPolySelLevel(rt.Name(level))
+        if op=='loop':rt.PolyToolsSelect.Loop(False)
+        else:rt.PolyToolsSelect.Ring()
     elif op in ('grow','shrink'):base.ButtonOp(rt.Name('GrowSelection' if op=='grow' else 'ShrinkSelection'))
     else:raise ValueError('未知扩展选择')
     return {'message':'选择范围已更新'}
@@ -261,6 +281,7 @@ def to_skin(p):
 @H.command('selection.visibility',True)
 def component_visibility(p):
     obj=H.mesh(p);base=poly(obj);level=p.get('level','vertex');operation=p['operation']
+    if level=='mixed':level=str(base.GetEPolySelLevel()).lower()
     if is_modifier(base):
         rt.select(obj);rt.execute('max modify mode');rt.modPanel.setCurrentObject(base)
         if operation=='show':
@@ -293,6 +314,7 @@ def drag_humanoid(p):
     _DRAG=(dict(p),str(rt.LXRigSceneToken))
     from pathlib import Path
     rt.fileIn(str(Path(__file__).parent/'viewport_tools.ms'))
+    rt.LXPlacementPlan=H.arr([H.arr([rt.Point3(*s['start']),rt.Point3(*s['end']),rt.Point3(*humanoid.dimensions(s['role'],1),1 if s['role']=='Pelvis' else 0)]) for s in humanoid.plan(dict(p,height=1,origin=[0,0,0]))])
     rt.execute('startTool LXHumanoidPlacement')
     return {'message':'在视口按下并拖出人物高度；右键取消。生成后可自由调整骨架。'}
 

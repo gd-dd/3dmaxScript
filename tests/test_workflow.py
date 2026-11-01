@@ -31,6 +31,16 @@ class WorkflowAlgorithms(unittest.TestCase):
   p,f=box();p2,f2=box(1.12);f+= [[i+8 for i in tri] for tri in f2];p+=p2
   rows,stats=binding.solve(p,f,[('a',[.3,.5,.5],[.7,.5,.5]),('b',[1.42,.5,.5],[1.82,.5,.5])],'voxel',4,2,24)
   self.assertTrue(stats['cells']>0);self.assertTrue(all(set(r)=={'a'} for r in rows[:8]));self.assertTrue(all(set(r)=={'b'} for r in rows[8:]))
+ def test_voxel_external_bones_and_partial_segment(self):
+  p,f=box();rows,stats=binding.solve(p,f,[('a',[.5,.5,-2],[.5,.5,2]),('b',[20,20,20],[20,20,21])],'voxel',4,2,12)
+  self.assertTrue(all(set(r)=={'a'} for r in rows));self.assertIn('b',stats['outsideBones'])
+ def test_voxel_detached_component_projects_nearest_bone(self):
+  p,f=box();rows,stats=binding.solve(p,f,[('a',[.5,.5,2],[.5,.5,3])],'voxel',4,2,12)
+  self.assertTrue(all(r=={'a':1} for r in rows));self.assertEqual(stats['projectedComponents'],1)
+ def test_voxel_unwelded_seam_still_has_volume(self):
+  p,f=box();p2=[p[i] for face in f for i in face];f2=[[i,i+1,i+2] for i in range(0,len(p2),3)]
+  rows,_=binding.solve(p2,f2,[('a',[.5,.5,.2],[.5,.5,.8])],'voxel',4,2,12)
+  self.assertEqual(len(rows),len(p2))
  def test_open_mesh_rejected(self):
   p,f=box()
   with self.assertRaisesRegex(ValueError,'封闭'):binding.solve(p,f[:-1],[('a',[.5,.5,.2],[.5,.5,.8])],'voxel')

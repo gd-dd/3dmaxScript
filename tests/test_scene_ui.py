@@ -32,8 +32,17 @@ class SharedSceneTests(unittest.TestCase):
         center=self.w.tree.topLevelItem(0);self.assertEqual(center.child(0).text(1),'骨盆 / 摆胯')
         self.w.scene_search.setText('骨盆');self.assertFalse(center.isHidden());self.assertFalse(center.child(0).isHidden());self.assertTrue(self.w.tree.topLevelItem(1).isHidden())
     def test_center_is_not_accidentally_bound_as_bone(self):
-        self.w.tree.topLevelItem(0).setSelected(True);self.assertEqual(self.w.selected_bones(),[])
-        self.w.tree.topLevelItem(0).child(0).setSelected(True);self.assertEqual(self.w.selected_bones(),['hip'])
+        self.w.category_trees['controls'].topLevelItem(0).setSelected(True);self.assertEqual(self.w.selected_bones(),[])
+        self.w.category_trees['bones'].topLevelItem(0).setSelected(True);self.assertEqual(self.w.selected_bones(),['hip'])
+    def test_model_and_bone_multiselection_are_independent(self):
+        models=self.w.category_trees['models'];bones=self.w.category_trees['bones']
+        models.topLevelItem(0).setSelected(True);models.topLevelItem(1).setSelected(True);bones.topLevelItem(0).setSelected(True)
+        self.assertEqual(set(self.w.selected_models()),{'mesh1','mesh2'});self.assertEqual(self.w.selected_bones(),['hip'])
+        self.w.load_scene(self.data)
+        self.assertEqual(set(self.w.selected_models()),{'mesh1','mesh2'});self.assertEqual(self.w.selected_bones(),['hip'])
+    def test_segment_bending_off_and_mixed_selection_present(self):
+        self.assertFalse(self.w.bend_segments.isChecked());self.assertGreaterEqual(self.w.component.findData('mixed'),0)
+        self.assertTrue(self.w.color_view.isChecked())
     def test_role_labels_distinguish_sides_and_chain_links(self):
         self.assertEqual(role_label({'role':'L_UpperArm_02'}),'左 · 上臂 · 02')
         self.assertEqual(role_label({'role':'R_Clavicle'}),'右 · 肩 / 锁骨')

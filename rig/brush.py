@@ -64,6 +64,8 @@ class Brush:
                 row=weight_edit.edit_many(self.rows[i],self.bones,value,'set' if mode=='set' else mode,self.locked,[b['id'] for b in self.data['bones']])
             self.rows[i]=row;keys=sorted(row,key=int)
             rt.skinOps.ReplaceVertexWeights(self.skin,i+1,H.arr([int(k) for k in keys]),H.arr([row[k] for k in keys]));self.changed.add(i)
+        from .weight_view import brush_changed
+        brush_changed(self)
         rt.skinOps.Invalidate(self.skin,1);rt.redrawViews()
     def end(self):
         if not self.holding:return

@@ -23,7 +23,14 @@ def solve(points,faces,segments,method='segment',limit=4,falloff=2,resolution=32
     if method!='voxel':raise ValueError('未知自动蒙皮方法')
     resolution=int(resolution)
     if not 8<=resolution<=64:raise ValueError('体素分辨率范围 8–64')
-    edges=Counter(tuple(sorted((a,b))) for f in faces for a,b in zip(f,f[1:]+f[:1]))
+    # Coincident vertices at material/normal seams do not create real holes.
+    span=max(max(p[i] for p in points)-min(p[i] for p in points) for i in range(3))
+    tolerance=max(span*1e-8,1e-10);weld={};remap=[]
+    for p in points:
+        key=tuple(round(v/tolerance) for v in p)
+        if key not in weld:weld[key]=len(weld)
+        remap.append(weld[key])
+    edges=Counter(tuple(sorted((remap[a],remap[b]))) for f in faces for a,b in zip(f,f[1:]+f[:1]) if remap[a]!=remap[b])
     if any(n!=2 for n in edges.values()):raise ValueError('体素距离场需要封闭流形网格；请补洞或选择线段距离')
     lower=[min(p[i] for p in points) for i in range(3)];upper=[max(p[i] for p in points) for i in range(3)]
     step=max(upper[i]-lower[i] for i in range(3))/resolution
@@ -55,14 +62,29 @@ def solve(points,faces,segments,method='segment',limit=4,falloff=2,resolution=32
     if not cells:raise ValueError('未找到内部体素，请提高分辨率或修复网格')
     lookup={c:i for i,c in enumerate(cells)};index=PointIndex(coords);queue=[];best=[{} for _ in cells]
     # Use each bone segment, not just its pivot, as a source through the volume.
+    seeded=set();outside=[]
     for key,a,b in segments:
         n=max(1,math.ceil(distance(a,b)/(step*.5)))
         seeds={}
         for i in range(n+1):
             p=[a[j]+(b[j]-a[j])*i/n for j in range(3)];near,dist2=index.nearest(p)
-            if dist2>step*2:raise ValueError('骨骼位于网格体积外或部位太薄：'+str(key))
+            if dist2>step*2:continue
             seeds[near]=min(seeds.get(near,float('inf')),dist2)
-        for cell,d in seeds.items():heapq.heappush(queue,(d,str(key),cell))
+        if not seeds:outside.append(str(key))
+        for cell,d in seeds.items():heapq.heappush(queue,(d,str(key),cell));seeded.add(cell)
+    # A detached garment/component may contain no skeleton at all. Project its
+    # nearest bone onto that component; never propagate across exterior cells.
+    unseen=set(range(len(cells)));projected=0
+    while unseen:
+        first=unseen.pop();component=[first];pending=[first]
+        while pending:
+            x,y,z=cells[pending.pop()]
+            for c in ((x-1,y,z),(x+1,y,z),(x,y-1,z),(x,y+1,z),(x,y,z-1),(x,y,z+1)):
+                j=lookup.get(c)
+                if j in unseen:unseen.remove(j);component.append(j);pending.append(j)
+        if not seeded.intersection(component):
+            d,key,cell=min((segment_distance(coords[j],a,b),str(k),j) for k,a,b in segments for j in component)
+            heapq.heappush(queue,(d,key,cell));projected+=1
     while queue:
         d,key,cell=heapq.heappop(queue)
         if key in best[cell] or len(best[cell])>=limit:continue
@@ -76,5 +98,5 @@ def solve(points,faces,segments,method='segment',limit=4,falloff=2,resolution=32
         cell,d2=index.nearest(p)
         if not best[cell]:raise ValueError('存在没有骨骼源的独立体积，请为该部分添加骨骼')
         output.append(row({k:d+d2 for k,d in best[cell].items()},limit,falloff))
-    return output,{'method':'voxel','resolution':resolution,'cells':len(cells),'cellSize':step}
+    return output,{'method':'voxel','resolution':resolution,'cells':len(cells),'cellSize':step,'outsideBones':outside,'projectedComponents':projected}
 

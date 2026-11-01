@@ -41,7 +41,8 @@ def skin(obj,p):
 def geometry(obj):
     temp=rt.snapshotAsMesh(obj)
     try:
-        points=[vec(rt.getVert(temp,i)) for i in range(1,int(temp.numverts)+1)]
+        inverse=rt.inverse(obj.objectTransform)
+        points=[vec(rt.getVert(temp,i)*inverse) for i in range(1,int(temp.numverts)+1)]
         faces=[]
         for i in range(1,int(temp.numfaces)+1):faces.append([int(x)-1 for x in vec(rt.getFace(temp,i))])
         return points,faces
@@ -404,3 +405,4 @@ from . import workflow_host
 from . import brush
 from . import symmetry
 from . import scene_io
+from . import batch_host

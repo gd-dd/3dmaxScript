@@ -2,8 +2,9 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QLineEdit,QTreeWidget,QTreeWidgetItem,QAbstractItemView,QTabWidget,QCheckBox,QSplitter,QSizePolicy,QScrollArea,QFrame
 from .workbench import RigWorkbench
+from .selection_ui import SelectionMixin
 
-class WorkflowWorkbench(RigWorkbench):
+class WorkflowWorkbench(SelectionMixin,RigWorkbench):
     def __init__(self,owner):
         super().__init__(owner)
         # Preserve all mature editing/exchange/facial/recovery widgets; reorganize them into stages.
@@ -32,6 +33,7 @@ class WorkflowWorkbench(RigWorkbench):
         self.chain_counts={}
         for key,title,value,low,high in [('spine','脊柱节数',3,1,12),('neck','颈部节数',1,1,12),('upperArm','上臂节数',1,1,12),('forearm','前臂节数',1,1,12),('thigh','大腿节数',1,1,12),('calf','小腿节数',1,1,12),('fingers','每手手指数',5,0,5),('fingerLinks','每指节数',3,1,12),('toes','每脚脚趾数',1,0,5),('toeLinks','每趾节数',2,1,12)]:
             field=self.integer(low,high,value);self.chain_counts[key]=field;two.addRow(title,field)
+        self.actions(two,('摆正选中的骨盆',lambda:self.mutate('pelvis.straighten',{'bones':self.selected_bones()})))
         self.actions(two,('在视口拖出人体高度',lambda:self.call('humanoid.drag',self.humanoid_options())),('按数值在原点创建',lambda:self.mutate('humanoid.create',self.humanoid_options())))
         note=QLabel('参照 Biped 比例与放松姿态，包含独立肩 / 锁骨与骨盆，BodyCenter 为质心。Z 轴向上，面向 -Y。普通 Bone，无 IK、不锁长度；可移动旋转。');note.setWordWrap(True);two.addRow(note)
         # Existing skeleton controls become the detailed stage, with viewport operations first.
@@ -60,7 +62,8 @@ class WorkflowWorkbench(RigWorkbench):
         self.actions(self.skeleton,('起点对齐目标',lambda:self.align('start')),('终点对齐目标',lambda:self.align('end')))
         four=self.page('04  IK 与长度定型')
         hint=QLabel('先调整骨架到模型内部。定型会固定 Bone 长度，为生成的人体手臂、腿创建 HI IK；脊柱、颈部、手指保持 FK。可使用 Max 撤销回退。');hint.setWordWrap(True);four.addRow(hint)
-        self.actions(four,('一键添加 IK 并固定长度',lambda:self.mutate('rig.finalize',{'bones':self.selected_bones()})))
+        self.bend_segments=QCheckBox('允许大小臂 / 大小腿中间分段参与弯曲（默认关闭）');four.addRow(self.bend_segments)
+        self.actions(four,('一键添加 IK 并固定长度',lambda:self.mutate('rig.finalize',{'bones':self.selected_bones(),'bendSegments':self.bend_segments.isChecked()})))
         five=self.page('05  控制器')
         self.control_shape=QComboBox()
         for label,key in [('圆环','circle'),('方框','rectangle'),('Point 虚拟体','point')]:self.control_shape.addItem(label,key)
@@ -71,18 +74,23 @@ class WorkflowWorkbench(RigWorkbench):
         for label,key in [('骨骼线段距离（快速）','segment'),('体素内部距离场','voxel'),('Max 原生包络','envelope')]:self.bind_method.addItem(label,key)
         self.bind_limit=self.integer(1,64,4);self.falloff=self.number(.1,16,2,.1);self.resolution=self.integer(8,64,32)
         six.addRow('初始权重算法',self.bind_method);six.addRow('每点最多影响数',self.bind_limit);six.addRow('距离衰减',self.falloff);six.addRow('体素最长轴分辨率',self.resolution)
-        note=QLabel('未选骨骼时使用工作流内全部骨骼。体素模式沿封闭模型内部传播距离；要求骨骼位于体积内，细小部位应提高分辨率。已有 Skin 会先保存权重快照再重算。');note.setWordWrap(True);six.addRow(note)
-        self.actions(six,('创建 Skin / 计算初始权重',lambda:self.mutate('bind.auto',{'bones':self.selected_bones(),'method':self.bind_method.currentData(),'limit':self.bind_limit.value(),'falloff':self.falloff.value(),'resolution':self.resolution.value()})))
+        note=QLabel('在模型栏多选目标。分步模式逐个推荐影响骨骼，调整骨骼栏后确认下一步。批量模式自动采用推荐范围。体素模式要求封闭模型；外部骨骼不会再中断整次计算。');note.setWordWrap(True);six.addRow(note)
+        self.bind_progress=QLabel('尚未开始蒙皮队列');self.bind_progress.setWordWrap(True);six.addRow(self.bind_progress)
+        self.actions(six,('开始分步蒙皮',lambda:self.start_bind_queue(False)),('自动批量蒙皮',lambda:self.start_bind_queue(True)))
+        self.actions(six,('确认此模型并下一步',self.confirm_bind_model),('跳过此模型',self.skip_bind_model),('停止队列',self.stop_bind_queue))
         w=self.page('07  权重与笔刷');w.addRow(self.info);self.actions(w,('读取 Skin 与当前选择',self.read_skin));w.addRow('作用范围',self.scope)
-        self.multi_bones=QTreeWidget();self.multi_bones.setHeaderLabels(['多选影响骨骼']);self.multi_bones.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection);self.multi_bones.setMinimumHeight(140)
-        w.addRow(self.multi_bones);w.addRow('所选骨骼合计权重 / 增量',self.value);w.addRow('保留影响数 N',self.limit)
+        self.color_view=QCheckBox('持续显示所选骨骼合计权重颜色');self.color_view.setChecked(True);w.addRow(self.color_view)
+        legend=QLabel('蓝 0 → 青 → 绿 0.5 → 黄 → 红 1 · 多骨骼显示总和');legend.setWordWrap(True);w.addRow(legend)
+        self.vertex_values=QTreeWidget();self.vertex_values.setHeaderLabels(['模型','顶点','合计影响']);self.vertex_values.setMaximumHeight(150);self.vertex_values.setToolTip('每模型显示前 200 个所选 Skin 顶点；未选点时显示模型顶点。');w.addRow(self.vertex_values)
+        w.addRow('所选骨骼合计权重 / 增量',self.value);w.addRow('保留影响数 N',self.limit)
+        self.actions(w,('仅当前选中骨骼影响',lambda:self.call('weights.restrict',{'meshes':self.selected_models(),'boneNodes':self.selected_bones()},lambda _:self.read_skin())))
         self.actions(w,('多骨骼赋值',lambda:self.multi('set')),('多骨骼加值',lambda:self.multi('add')),('多骨骼减值',lambda:self.multi('subtract')),('逐点仅保留 N 个影响',lambda:self.mutate('weights.edit',{'mode':'prune','threshold':0,'limit':self.limit.value(),'scope':self.scope.currentData()},self.read_skin)))
         w.addRow('选点平滑强度',self.strength);w.addRow('平滑次数',self.iterations);self.actions(w,('平滑选点',lambda:self.weight('smooth')),('归一化',lambda:self.weight('normalize')))
         self.component=QComboBox()
-        for label,key in [('顶点','vertex'),('边','edge'),('面','face')]:self.component.addItem(label,key)
+        for label,key in [('顶点','vertex'),('边','edge'),('面','face'),('混合点 / 边 / 面','mixed')]:self.component.addItem(label,key)
         w.addRow('视口选择模式',self.component)
         self.actions(w,('进入点线面选择',lambda:self.call('selection.mode',self.params(level=self.component.currentData()))),('转换为 Skin 顶点',lambda:self.call('selection.to_skin',self.params(level=self.component.currentData()),lambda _:self.read_skin())))
-        self.actions(w,*[(title,lambda op=op:self.call('selection.expand',self.params(level=self.component.currentData(),operation=op))) for title,op in [('循环边','loop'),('环形边','ring'),('扩大选择','grow'),('收缩选择','shrink')]])
+        self.actions(w,*[(title,lambda op=op:self.call('selection.expand',self.params(level=self.component.currentData(),operation=op))) for title,op in [('循环（点 / 边 / 面）','loop'),('环形（点 / 边 / 面）','ring'),('扩大选择','grow'),('收缩选择','shrink')]])
         self.actions(w,*[(title,lambda op=op:self.call('selection.visibility',self.params(level=self.component.currentData(),operation=op))) for title,op in [('隐藏选择','hide'),('仅显示选择','isolate'),('显示全部子对象','show')]])
         self.brush_mode=QComboBox()
         for label,key in [('加值','add'),('减值','subtract'),('赋值','set'),('平滑','smooth')]:self.brush_mode.addItem(label,key)
@@ -98,10 +106,8 @@ class WorkflowWorkbench(RigWorkbench):
         for i in range(self.tabs.count()):self.steps.addItem(self.tabs.tabText(i))
         self.tabs.setCurrentIndex(0)
         self.build_shared_scene(two,w)
-    def selected_bones(self):
-        selected=set(self.selected());return [n['id'] for n in self.nodes if n['id'] in selected and (n.get('workflow')=='bones' or (not n.get('workflow') and n.get('bone')))]
     def symmetry_options(self):
-        return dict(side=self.symmetry_side.currentData(),wholeRig=self.symmetry_whole.isChecked(),autoCenter=self.symmetry_auto_center.isChecked(),center=self.symmetry_center.value())
+        return dict(bones=self.selected_bones(),side=self.symmetry_side.currentData(),wholeRig=self.symmetry_whole.isChecked(),autoCenter=self.symmetry_auto_center.isChecked(),center=self.symmetry_center.value())
     def mirror_bones(self):
         self.stop_symmetry();self.call('symmetry.apply',self.symmetry_options())
     def toggle_symmetry(self,on):
@@ -126,7 +132,7 @@ class WorkflowWorkbench(RigWorkbench):
     def build_shared_scene(self,two,weights_form):
         from .scene_ui import prepare_tree,split_form
         # Reuse the same model target, Skin selector and hierarchy in every step.
-        body_layout=self.body.layout();target_form=body_layout.takeAt(0).layout()
+        body_layout=self.body.layout();target_form=body_layout.takeAt(0).layout();target_form.removeRow(2)
         body_layout.removeWidget(self.tabs)
         self.skeleton.takeRow(self.tree);prepare_tree(self.tree)
         self.shared_scene=QWidget();left=QVBoxLayout(self.shared_scene);left.setContentsMargins(0,0,8,0)
@@ -134,15 +140,15 @@ class WorkflowWorkbench(RigWorkbench):
         self.layout().removeWidget(self.refresh);left.addWidget(self.refresh)
         self.scene_search=QLineEdit();self.scene_search.setPlaceholderText('搜索名称、肩、骨盆、左 / 右…');left.addWidget(self.scene_search)
         self.workflow_only=QCheckBox('仅显示已导入 / 本工具生成的对象');self.workflow_only.setChecked(True);left.addWidget(self.workflow_only)
-        left.addWidget(self.tree,1)
+        self.build_categories(left)
         row=QHBoxLayout()
-        for label,fn in [('展开',lambda:self.tree.expandAll()),('折叠',lambda:self.tree.collapseAll()),('选中到 Max',lambda:self.call('nodes.select',{'nodes':self.selected()}))]:
+        for label,fn in [('展开',lambda:[t.expandAll() for t in self.category_trees.values()]),('折叠',lambda:[t.collapseAll() for t in self.category_trees.values()]),('选中到 Max',lambda:self.call('nodes.select',{'nodes':self.selected()}))]:
             button=QPushButton(label);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button)
-        left.addLayout(row);left.addLayout(target_form)
+        left.addLayout(row);weights_form.insertRow(0,target_form)
         self.context_summary=QLabel('读取一次场景，各步骤共用对象和当前模型。');self.context_summary.setWordWrap(True);left.addWidget(self.context_summary)
         self.scene_search.textChanged.connect(self.filter_scene_tree);self.workflow_only.toggled.connect(self.filter_scene_tree)
-        self.tree.itemSelectionChanged.connect(self.choose_tree_model)
-        self.scene_scroll=QScrollArea();self.scene_scroll.setWidgetResizable(True);self.scene_scroll.setFrameShape(QFrame.Shape.NoFrame);self.scene_scroll.setWidget(self.shared_scene);self.scene_scroll.setMinimumWidth(270)
+        # Object roles keep independent selection sets.
+        self.scene_scroll=QScrollArea();self.scene_scroll.setWidgetResizable(True);self.scene_scroll.setFrameShape(QFrame.Shape.NoFrame);self.scene_scroll.setWidget(self.shared_scene);self.scene_scroll.setMinimumWidth(270);self.scene_scroll.viewport().installEventFilter(self)
         self.splitter=QSplitter(Qt.Orientation.Horizontal);self.splitter.addWidget(self.scene_scroll);self.splitter.addWidget(self.tabs)
         self.splitter.setChildrenCollapsible(False);self.splitter.setStretchFactor(0,0);self.splitter.setStretchFactor(1,1);self.splitter.setSizes([330,720]);body_layout.addWidget(self.splitter,1)
         self.layout().setStretchFactor(self.body,1)
@@ -166,15 +172,16 @@ class WorkflowWorkbench(RigWorkbench):
     def filter_scene_tree(self,*_):
         if not hasattr(self,'scene_search'):return
         from .scene_ui import filter_tree
-        filter_tree(self.tree,self.nodes,self.scene_search.text(),self.workflow_only.isChecked())
+        filter_tree(self.tree,self.nodes,self.scene_search.text(),self.workflow_only.isChecked());self.filter_categories()
     def change_step(self,index):self.tabs.setCurrentIndex(index)
     def visibility(self,category,visible,button,title):
         button.setText(title+(' 显示' if visible else ' 隐藏'));self.call('workflow.visibility',{'category':category,'visible':visible})
     def humanoid_options(self):return dict(height=self.rig_height.value(),prefix=self.rig_prefix.text(),**{k:v.value() for k,v in self.chain_counts.items()})
     def align(self,endpoint):self.mutate('bone.align',{'node':self.one(),'target':self.align_target.currentData(),'endpoint':endpoint})
-    def selected_influences(self):return [i.data(0,Qt.ItemDataRole.UserRole) for i in self.multi_bones.selectedItems()]
-    def multi(self,mode):self.mutate('weights.multi',{'bones':self.selected_influences(),'value':abs(self.value.value()),'mode':mode,'scope':self.scope.currentData()},self.read_skin)
-    def begin_brush(self):self.call('brush.start',self.params(bones=self.selected_influences(),mode=self.brush_mode.currentData(),radius=self.brush_radius.value(),strength=self.brush_strength.value(),value=abs(self.value.value()),selectedOnly=self.brush_selected.isChecked()))
+    def multi(self,mode):
+        self.edit_influences(lambda:self.mutate('weights.multi',{'bones':self.selected_influences(),'value':abs(self.value.value()),'mode':mode,'scope':self.scope.currentData()},self.read_skin))
+    def begin_brush(self):
+        self.edit_influences(lambda:self.call('brush.start',self.params(bones=self.selected_influences(),mode=self.brush_mode.currentData(),radius=self.brush_radius.value(),strength=self.brush_strength.value(),value=abs(self.value.value()),selectedOnly=self.brush_selected.isChecked())))
     def load_scene(self,data):
         previous_skin=self.skin.currentData(Qt.ItemDataRole.UserRole+1)
         self.tree.blockSignals(True)
@@ -198,9 +205,7 @@ class WorkflowWorkbench(RigWorkbench):
         for n in self.nodes:
             self.align_target.addItem(n['name'],n['id'])
             if n.get('workflow'):self.roster.addTopLevelItem(QTreeWidgetItem([n['name'],{'models':'模型','bones':'骨骼','controls':'控制器'}.get(n['workflow'],n['workflow'])]))
-        self.align_target.setCurrentIndex(max(0,self.align_target.findData(previous)))
+        self.align_target.setCurrentIndex(max(0,self.align_target.findData(previous)));self.rebuild_categories()
     def load_skin(self,data):
         super().load_skin(data)
-        selected=set(self.selected_influences());self.multi_bones.clear()
-        for b in data['bones']:
-            item=QTreeWidgetItem([b['name']]);item.setData(0,Qt.ItemDataRole.UserRole,b['id']);self.multi_bones.addTopLevelItem(item);item.setSelected(b['id'] in selected)
+        self._skin_bones={b['node']:b['id'] for b in data['bones']}
