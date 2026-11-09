@@ -17,6 +17,12 @@
       "group": "动画"
     },
     {
+      "id": "retarget",
+      "label": "骨架重定向",
+      "description": "在选中 Max 内配置双骨架映射与动画重定向",
+      "group": "动画"
+    },
+    {
       "id": "animation-bake",
       "label": "动画烘焙",
       "description": "按采样间隔烘焙动画",

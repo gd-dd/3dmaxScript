@@ -47,14 +47,48 @@ def windows():
     return sorted(found.values(),key=lambda p:p['pid'])
 
 
+def absolute_directory(value):
+    if not value or not Path(value).is_absolute():
+        raise ValueError('配置目录必须是有效的绝对路径')
+    return Path(value).resolve()
+
+
+def user_root():
+    value=os.environ.get('LOCALAPPDATA')
+    if value is None:
+        buffer=ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.shell32.SHGetFolderPathW(None,0x1c,None,0,buffer)!=0:
+            raise ValueError('无法定位本地应用数据目录')
+        value=buffer.value
+    return absolute_directory(value)/'LXMaxTools'
+
+
+def mxs_string(value):
+    return '"'+str(value).replace('\\','\\\\').replace('"','\\"')+'"'
+
+
+def connection_text(bootstrap):
+    bootstrap=Path(bootstrap).resolve()
+    if not bootstrap.is_file() or bootstrap.suffix.lower()!='.ms':
+        raise ValueError('连接脚本不存在')
+    return ('global LXMaxBridgeRequestedUserRoot = '+mxs_string(user_root())+'\n'
+            'fileIn '+mxs_string(bootstrap)+' quiet:true\n')
+
+
+def connection_script(tool_id,bootstrap):
+    folder=user_root()/'connections';folder.mkdir(parents=True,exist_ok=True)
+    path=folder/(str(uuid.uuid5(uuid.NAMESPACE_URL,str(Path(bootstrap).resolve())))+'.ms')
+    path.write_text(connection_text(bootstrap),encoding='utf-8-sig')
+    return path
+
+
 def install(tool_id, bootstrap):
     bootstrap=Path(bootstrap).resolve()
     if not bootstrap.is_file() or bootstrap.suffix.lower()!='.ms':raise ValueError('连接脚本不存在')
-    folder=Path(os.environ['APPDATA'])/'Autodesk/ApplicationPlugins'/('LX-'+tool_id)
+    folder=absolute_directory(os.environ.get('APPDATA'))/'Autodesk/ApplicationPlugins'/('LX-'+tool_id)
     folder.mkdir(parents=True,exist_ok=True)
-    path=str(bootstrap).replace('"','""')
-    # Only a bridge is loaded; never change or save the user's scene.
-    (folder/'loader.ms').write_text('try (if doesFileExist @"'+path+'" do fileIn @"'+path+'" quiet:true) catch (format "LX connection: %\\n" (getCurrentException()))',encoding='utf-8-sig')
+    # Bind this installation to the shelf's root, not the Max birth environment.
+    (folder/'loader.ms').write_text(connection_text(bootstrap),encoding='utf-8-sig')
     code='{'+str(uuid.uuid5(uuid.NAMESPACE_URL,'lx-max-connection/'+tool_id))+'}'
     (folder/'PackageContents.xml').write_text(package_xml(tool_id,code),encoding='utf-8')
     return folder

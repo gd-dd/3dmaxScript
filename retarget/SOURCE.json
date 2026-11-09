@@ -1,0 +1,58 @@
+{
+  "component": "retarget",
+  "level": "L3",
+  "parentRepository": "gd-dd/3dmaxScript",
+  "sourceRepository": "gd-dd/LXMaxRetarget",
+  "sourceTag": "v0.0.1",
+  "sourceCommit": "377d7f9d0faf180f506b5e78b1e7ca720c82ac45",
+  "sourceZipSha256": "70f1501fba86347451f2164c8467411aa6a09630cbfc9cfd44445f335691bb82",
+  "verifiedModuleBaseline": {
+    "__init__.py": "38deb952b6057aabee09c9090213d52685b82c5ab91b3dd891670946e1b5db43",
+    "host.py": "ef91c68aeb5f81657857a459bdf99426275c56073b202058c6f10011e91d97c4",
+    "launcher.py": "3e1b578ae07f17629ff86e8f9ed288e71f38fca6d1a725d7363f22ae530d7620",
+    "matching.py": "b249a594508f69784bf074621de260a02db92bf1eee36ea885e2f91ef484955d",
+    "math3d.py": "ae0fe1f250c911c015104e9a85aa9f4303092b7e9bed0ee87596afc9925082b7",
+    "model.py": "f4b3e14fecf4fca53d5c83d06e1755ad4090addde002c87135790d84914b1cc3",
+    "preset.py": "facd6499fae1749d744bf36c430d8862ee631512c06ba4451e93acb24310e46d",
+    "session.py": "7ad2ac673d7dba27a86e9cd0013843006d4345dd58ebf4fec7a0daf74bb42111",
+    "solver.py": "35ff2ba2a228421b21d8e06785efd6ec13211d912ee60e08da03db73a348d4fa",
+    "ui.py": "1624fc30140c05312d2593955933027998dfdf10cb40ef0ff2448ee56803906b"
+  },
+  "bytePreservedModules": [
+    "__init__.py",
+    "host.py",
+    "matching.py",
+    "math3d.py",
+    "model.py",
+    "preset.py",
+    "session.py",
+    "solver.py",
+    "ui.py"
+  ],
+  "routingAdaptations": [
+    "launcher.py",
+    "start.py"
+  ],
+  "standaloneHistoryPreserved": true,
+  "standaloneMarkerCopied": false,
+  "publicApi": "retarget.launcher.show(session=None)",
+  "parentEntry": "LX_Retarget.ms -> bridge/open_retarget.py",
+  "standaloneConflict": "Refuse while an old standalone window is live; do not close or mutate lxmaxretarget modules.",
+  "currentModuleSha256": {
+    "__init__.py": "38deb952b6057aabee09c9090213d52685b82c5ab91b3dd891670946e1b5db43",
+    "host.py": "ef91c68aeb5f81657857a459bdf99426275c56073b202058c6f10011e91d97c4",
+    "launcher.py": "3e692eacb6e67b2754af23c6877eed4929528d08d15ec6563a75e2602fdc7223",
+    "matching.py": "b249a594508f69784bf074621de260a02db92bf1eee36ea885e2f91ef484955d",
+    "math3d.py": "ae0fe1f250c911c015104e9a85aa9f4303092b7e9bed0ee87596afc9925082b7",
+    "model.py": "f4b3e14fecf4fca53d5c83d06e1755ad4090addde002c87135790d84914b1cc3",
+    "preset.py": "facd6499fae1749d744bf36c430d8862ee631512c06ba4451e93acb24310e46d",
+    "session.py": "7ad2ac673d7dba27a86e9cd0013843006d4345dd58ebf4fec7a0daf74bb42111",
+    "solver.py": "35ff2ba2a228421b21d8e06785efd6ec13211d912ee60e08da03db73a348d4fa",
+    "ui.py": "1624fc30140c05312d2593955933027998dfdf10cb40ef0ff2448ee56803906b"
+  },
+  "currentRoutingSha256": {
+    "launcher.py": "3e692eacb6e67b2754af23c6877eed4929528d08d15ec6563a75e2602fdc7223",
+    "start.py": "3c8facdd80f197c062d0f4ef0351adeb7a006d5b8f5429f0328cb3a4792b7e3b",
+    "icon.png": "68871847e7faf8d79be53ce3cb627fef64054a24e24ec1ec4347399e0a8701a1"
+  }
+}

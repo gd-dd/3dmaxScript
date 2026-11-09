@@ -1,0 +1,35 @@
+{
+  "component": "retarget",
+  "publicApi": "retarget.launcher.show(session=None)",
+  "parentEntry": [
+    "LX_Retarget.ms",
+    "bridge/open_retarget.py"
+  ],
+  "requiredRuntimeFiles": [
+    "retarget/__init__.py",
+    "retarget/host.py",
+    "retarget/launcher.py",
+    "retarget/matching.py",
+    "retarget/math3d.py",
+    "retarget/model.py",
+    "retarget/preset.py",
+    "retarget/session.py",
+    "retarget/solver.py",
+    "retarget/start.py",
+    "retarget/ui.py",
+    "retarget/icon.png"
+  ],
+  "recommendedDocumentation": [
+    "retarget/README.md",
+    "retarget/API_CONTRACT.md",
+    "retarget/docs/COMPATIBILITY.md",
+    "retarget/docs/VALIDATION.md",
+    "retarget/SOURCE.json"
+  ],
+  "forbiddenIndependentMarkers": [
+    "retarget/.lxtool/manifest.json",
+    "retarget/.lxtool/panel.json"
+  ],
+  "parentVersionOwnedBy": "maxsuite",
+  "componentBaselineVersion": "0.0.1"
+}

@@ -3,6 +3,7 @@ global LXMaxBridgeTimer
 global LXMaxBridgeRoot
 global LXMaxBridgeSession
 global LXMaxBridgeBusy = false
+global LXMaxBridgeRequestedUserRoot
 global LXMaxBridgeSource
 global LXRigPayload
 global LXRigResponse
@@ -17,8 +18,19 @@ fileIn (LXMaxBridgeRoot + "\\bridge\\rig_context.ms") quiet:true
     local utc = started.ToUniversalTime()
     local ticks = utc.Ticks
     local birth = (dotNetClass "System.Convert").ToString ticks
-    local userRoot = (dotNetClass "System.Environment").GetEnvironmentVariable "LOCALAPPDATA"
-    LXMaxBridgeSession = userRoot + "\\LXMaxTools\\sessions\\" + (proc.Id as string) + "-" + birth
+    local userRoot = LXMaxBridgeRequestedUserRoot
+    LXMaxBridgeRequestedUserRoot = undefined
+    if userRoot == undefined do (
+        local localData = (dotNetClass "System.Environment").GetEnvironmentVariable "LOCALAPPDATA"
+        if localData == undefined do localData = (dotNetClass "System.Environment").GetFolderPath ((dotNetClass "System.Environment+SpecialFolder").LocalApplicationData)
+        local ioPath = dotNetClass "System.IO.Path"
+        if not (ioPath.IsPathRooted localData) or (ioPath.GetPathRoot localData).count < 3 do throw "LOCALAPPDATA must be an absolute directory"
+        userRoot = (ioPath.GetFullPath localData) + "\\LXMaxTools"
+    )
+    local ioPath = dotNetClass "System.IO.Path"
+    if not (ioPath.IsPathRooted userRoot) or (ioPath.GetPathRoot userRoot).count < 3 do throw "Invalid explicit Max session root"
+    userRoot = ioPath.GetFullPath userRoot
+    LXMaxBridgeSession = userRoot + "\\sessions\\" + (proc.Id as string) + "-" + birth
 )
 (dotNetClass "System.IO.Directory").CreateDirectory LXMaxBridgeSession
 
@@ -54,6 +66,7 @@ fn LXMaxBridgeRun id =
         "root-cleanup": "清理根骨骼.ms"
         "rig-workbench": "LX_RigSkin.ms"
         "ribbon": "LX_Ribbon.ms"
+        "retarget": "LX_Retarget.ms"
         default: undefined
     )
     if script == undefined then throw "Unknown plugin ID"

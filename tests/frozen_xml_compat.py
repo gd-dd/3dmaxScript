@@ -23,7 +23,7 @@ app=QApplication([])
 bootstrap=OUT/'中文 & 路径'/'桥接.ms';bootstrap.parent.mkdir(exist_ok=True)
 bootstrap.write_text('-- isolated test; never executed',encoding='utf-8')
 folder=max_connection.install('max-tools',bootstrap)
-assert str(bootstrap) in (folder/'loader.ms').read_text('utf-8-sig')
+assert max_connection.mxs_string(bootstrap) in (folder/'loader.ms').read_text('utf-8-sig')
 special='中文 &<>"\'\t\n\r'
 document=max_connection.package_xml(special,'{stable-id}')
 for invalid in ('\0','\ud800','\ufffe'):
@@ -33,7 +33,8 @@ for invalid in ('\0','\ud800','\ufffe'):
 manifest=json.loads((ROOT/'.lxtool/manifest.json').read_text('utf-8-sig'))
 tool=dict(manifest,id='repo-1342543761',root=ROOT,panelData=json.loads((ROOT/'.lxtool/panel.json').read_text('utf-8')))
 parent=QWidget();handle=NativePanelHandle(tool,OUT/'config',parent)
-assert 'ribbon' in handle.widget.buttons
+assert {'ribbon','retarget'} <= set(handle.widget.buttons)
+assert len(handle.widget.buttons)==9
 assert handle.widget.process.state().value==0
 handle.shutdown();handle.shutdown()
 builtins.__import__=real_import
@@ -45,6 +46,6 @@ assert root.attrib['UpgradeCode']==root.attrib['ProductCode']=='{stable-id}'
 installed=ET.parse(folder/'PackageContents.xml').getroot()
 assert installed.find('Components/ComponentEntry').attrib['ModuleName']=='./loader.ms'
 assert installed.find('Components/RuntimeRequirements').attrib==dict(OS='Win64',Platform='3ds Max',SeriesMin='2024',SeriesMax='2027')
-assert str(ROOT/'bridge/LXMaxBridge.ms') in (folder/'loader.ms').read_text('utf-8-sig')
+assert max_connection.mxs_string(ROOT/'bridge/LXMaxBridge.ms') in (folder/'loader.ms').read_text('utf-8-sig')
 (OUT/'result.json').write_text(json.dumps(dict(ok=True,scope='source loader; xml imports blocked; not frozen EXE',ribbon=True,attributes=True,chinesePath=True),indent=2),encoding='utf-8')
 print('PASS blocked xml native loader, ribbon button, Chinese path, XML attribute roundtrip, invalid character rejection')

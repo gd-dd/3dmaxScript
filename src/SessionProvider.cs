@@ -19,12 +19,21 @@ public sealed class Instance {
 }
 public static class Engine {
     public static string Root = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
-    public static string UserRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LXMaxTools");
+    public static string AbsoluteDirectory(string value) {
+        if(String.IsNullOrWhiteSpace(value) || !Path.IsPathRooted(value) || Path.GetPathRoot(value).Length<3)
+            throw new Exception("LOCALAPPDATA 必须是有效的绝对目录。");
+        return Path.GetFullPath(value);
+    }
+    public static string LocalDataRoot() {
+        var value=Environment.GetEnvironmentVariable("LOCALAPPDATA",EnvironmentVariableTarget.Process);
+        return AbsoluteDirectory(value==null?Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData):value);
+    }
+    public static string UserRoot = Path.Combine(LocalDataRoot(), "LXMaxTools");
     public static readonly Dictionary<string,string> Plugins = new Dictionary<string,string> {
         {"animation-bake", "动画烘焙工具.ms"}, {"keyframe-formula", "自定义公式关键帧.ms"},
         {"material-split", "按材质ID拆分模型.ms"}, {"parent-keep-world", "保持位移建立父子.ms"},
         {"pmx-import", "PMX导入.ms"}, {"root-cleanup", "清理根骨骼.ms"},
-        {"rig-workbench", "LX_RigSkin.ms"}, {"ribbon", "LX_Ribbon.ms"}
+        {"rig-workbench", "LX_RigSkin.ms"}, {"ribbon", "LX_Ribbon.ms"}, {"retarget", "LX_Retarget.ms"}
     };
     public static string Decode(string s) { return Encoding.UTF8.GetString(Convert.FromBase64String(s)); }
     public static string Label(string id) { return Plugins.ContainsKey(id)?Path.GetFileNameWithoutExtension(Plugins[id]):id; }
@@ -85,10 +94,19 @@ public static class Engine {
         File.WriteAllText(path+".tmp","rig\n"+DateTime.UtcNow.AddMinutes(5).Ticks+"\n"+Convert.ToBase64String(Encoding.UTF8.GetBytes(payload)),new UTF8Encoding(false));
         File.Move(path+".tmp",path);return path;
     }
+    static string MxsString(string value) {
+        return "((dotNetClass \"System.Text.Encoding\").UTF8.GetString ((dotNetClass \"System.Convert\").FromBase64String \""+Convert.ToBase64String(Encoding.UTF8.GetBytes(value))+"\"))";
+    }
+    public static string ConnectionScript() {
+        var folder=Path.Combine(UserRoot,"connections");Directory.CreateDirectory(folder);
+        var script=Path.Combine(folder,RootKey+".ms");
+        File.WriteAllText(script,"global LXMaxBridgeRequestedUserRoot = "+MxsString(UserRoot)+"\nfileIn "+MxsString(Path.Combine(Root,"bridge","LXMaxBridge.ms"))+" quiet:true\n",new UTF8Encoding(true));
+        return script;
+    }
     public static Process Launch(string exe) {
         if(!File.Exists(exe)||!String.Equals(Path.GetFileName(exe),"3dsmax.exe",StringComparison.OrdinalIgnoreCase)) throw new Exception("请选择有效的 3dsmax.exe。");
         VerifyPackage();
-        var start=new ProcessStartInfo(exe,"-U MAXScript \""+Path.Combine(Root,"bridge","LXMaxBridge.ms")+"\"") { UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(exe) };
+        var start=new ProcessStartInfo(exe,"-U MAXScript \""+ConnectionScript()+"\"") { UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(exe) };
         foreach(var key in new [] {"QT_QPA_PLATFORM","QT_PLUGIN_PATH","QT_QPA_PLATFORM_PLUGIN_PATH","PYTHONHOME","PYTHONPATH"}) start.EnvironmentVariables.Remove(key);
         var started=Process.Start(start);
         Remember(started);return started;
@@ -119,14 +137,14 @@ public static class Engine {
     public static string DefaultExe() {
         var config=Path.Combine(UserRoot,"max-path.txt");
         if(File.Exists(config)&&File.Exists(File.ReadAllText(config))) return File.ReadAllText(config);
-        var running=Scan().FirstOrDefault(i=>File.Exists(i.Exe)); if(running!=null) return running.Exe;
         try {
-            var shelf=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"LXTool","repository-tools-v2.json");
+            var shelf=Path.Combine(LocalDataRoot(),"LXTool","repository-tools-v2.json");
             var json=new JavaScriptSerializer().DeserializeObject(File.ReadAllText(shelf)) as Dictionary<string,object>;
             var apps=(Dictionary<string,object>)json["applications"];
             var app=(Dictionary<string,object>)((Dictionary<string,object>)apps["repo-1342543761"])["max"];
             var path=(string)app["path"];if(File.Exists(path))return path;
         } catch {}
+        var running=Scan().FirstOrDefault(i=>File.Exists(i.Exe)); if(running!=null) return running.Exe;
         using(var key=Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Autodesk\3dsMax")) if(key!=null) {
             foreach(var name in key.GetSubKeyNames().OrderByDescending(s=>s)) using(var version=key.OpenSubKey(name)) {
                 var dir=version.GetValue("Installdir") as string;
@@ -186,7 +204,7 @@ static class Provider {
                 try{File.Delete(p.Path);}catch{}pending.Remove(p);
             }
         }
-        return new {protocol=1,id=Field(request,"id"),ok=true,applicationPath=Engine.DefaultExe(),events=events,results=results,
+        return new {protocol=1,id=Field(request,"id"),ok=true,sessionRoot=Engine.UserRoot,applicationPath=Engine.DefaultExe(),events=events,results=results,
             sessions=sessions.Select(i=>new {id=i.Key,title=String.IsNullOrEmpty(i.Scene)?i.Title:Path.GetFileName(i.Scene),
                 detail="PID "+i.Pid+" · "+i.Title,state=i.Connected?"ready":i.State=="未连接"?"unconnected":"busy",status=i.State}),
             pending=pending.Select(p=>new {sessionId=p.Session,toolId=p.Tool})};
@@ -206,7 +224,7 @@ static class Provider {
                 Console.WriteLine(json.Serialize(result));Console.Out.Flush();
             }
             return 0;
-        }catch(Exception e){Console.Error.WriteLine(e.Message);return 1;}
+        }catch(Exception e){Console.Error.WriteLine(e.GetBaseException().Message);return 1;}
         finally{foreach(var p in pending)try{File.Delete(p.Path);}catch{}}
     }
 }

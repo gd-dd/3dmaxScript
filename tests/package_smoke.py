@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix='lx-rig-package-') as temp:
     workspace=RepositoryWorkspace(base/'tools',base/'config');workspace.display(tool)
     panel=workspace.native_panel.widget
     assert not hasattr(panel,'rig')
-    assert 'rig-workbench' in panel.buttons
+    assert set(panel.buttons)=={'rig-workbench','ribbon','retarget','animation-bake','keyframe-formula','material-split','parent-keep-world','pmx-import','root-cleanup'}
     assert (root/'LX_RigSkin.ms').is_file()
     assert (root/'rig/max_ui.py').is_file()
     assert panel.process.state().value==0,'rendering started a process'

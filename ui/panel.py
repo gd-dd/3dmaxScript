@@ -195,7 +195,8 @@ class MaxPanel(QWidget):
         QMessageBox.information(self,'自动连接已安装','以后启动 Max 会自动连接。当前已打开的 Max 不会被重启，请点击“连接当前已打开窗口”完成首次连接。\n'+str(folder))
 
     def connection_help(self):
-        script=str(self.context.resource('bridge/LXMaxBridge.ms'))
+        try:script=str(max_connection.connection_script('max-tools',self.context.resource('bridge/LXMaxBridge.ms')))
+        except Exception as error:self.fail(str(error));return
         QApplication.clipboard().setText(script)
         target=self.sessions.get(self.active_id,{}).get('detail','需要连接的 Max 窗口')
         QMessageBox.information(self,'连接选中窗口','在 '+target+' 中使用 Scripting → Run Script 运行以下脚本。路径已复制；不会创建或重置场景。\n\n'+script)
