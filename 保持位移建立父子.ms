@@ -66,12 +66,12 @@ rollout ReparentBakeRollout "保持位移建立父子" width:420
 
     on btnExecute Click args do
     (
-        if childNode == undefined do
+        if not isValidNode childNode do
         (
             messageBox "请选择子物体！" title:"错误"
             return false
         )
-        if parentNode == undefined do
+        if not isValidNode parentNode do
         (
             messageBox "请选择父物体！" title:"错误"
             return false
@@ -82,6 +82,11 @@ rollout ReparentBakeRollout "保持位移建立父子" width:420
             return false
         )
 
+        local ancestor = parentNode
+        while ancestor != undefined do (
+            if ancestor == childNode do (messageBox "不能将对象连接到自己的子层级！" title:"错误"; return false)
+            ancestor = ancestor.parent
+        )
         local startF = spnStart.value
         local endF   = spnEnd.value
         if startF > endF do
@@ -101,11 +106,12 @@ rollout ReparentBakeRollout "保持位移建立父子" width:420
         )
 
         -- 阶段2：建立父子关系
-        childNode.parent = parentNode
+        -- Parent assignment belongs to the same undo operation as the keys.
 
         -- 阶段3：逐帧用世界变换写回，并打关键帧
         with redraw off, undo "保持位移建立父子" on
         (
+            childNode.parent = parentNode
             with animate on
             (
                 for i = 1 to worldTM.count do

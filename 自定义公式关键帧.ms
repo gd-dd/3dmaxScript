@@ -60,50 +60,8 @@ rollout CustomFormulaRollout "自定义公式计算关键帧" width:420
         if digitsStr.count>0 then digitsStr as integer else 0
     )
 
-    fn convertDegToRad str = (
-        local result = ""; local i = 1
-        local d2r = "0.0174532925199433"; local r2d = "57.2957795130823"
-        local fwd = #("sin","cos","tan"); local inv = #("asin","acos","atan")
-        while i <= str.count do (
-            local matched = false
-            for func in fwd while not matched do (
-                local tag = func + "("
-                if i+tag.count-1<=str.count and subString str i tag.count == tag then (
-                    if i==1 or not (isWordChar str[i-1]) then (
-                        local depth=1; local j=i+tag.count
-                        while j<=str.count and depth>0 do (
-                            if str[j]=="(" then depth+=1 else if str[j]==")" then depth-=1
-                            if depth>0 then j+=1
-                        )
-                        if j<=str.count then (
-                            local inner = subString str (i+tag.count) (j-i-tag.count)
-                            result += func + "((" + inner + ")*" + d2r + ")"
-                            i=j+1; matched=true
-                        )
-                    )
-                )
-            )
-            for func in inv while not matched do (
-                local tag = func + "("
-                if i+tag.count-1<=str.count and subString str i tag.count == tag then (
-                    if i==1 or not (isWordChar str[i-1]) then (
-                        local depth=1; local j=i+tag.count
-                        while j<=str.count and depth>0 do (
-                            if str[j]=="(" then depth+=1 else if str[j]==")" then depth-=1
-                            if depth>0 then j+=1
-                        )
-                        if j<=str.count then (
-                            local inner = subString str (i+tag.count) (j-i-tag.count)
-                            result += "(" + func + "(" + inner + ")*" + r2d + ")"
-                            i=j+1; matched=true
-                        )
-                    )
-                )
-            )
-            if not matched then (result += str[i]; i+=1)
-        )
-        result
-    )
+    -- MAXScript trigonometric functions already use degrees.
+    fn convertDegToRad str = str
 
     ------------------------------------------------------------------------
     --  事件
@@ -147,7 +105,7 @@ rollout CustomFormulaRollout "自定义公式计算关键帧" width:420
         local changeCount = 0; local errorCount = 0
         local curTime = sliderTime
 
-        with redraw off
+        with redraw off, undo "公式关键帧" on
         (
             for tIdx = 1 to selTrackNum do
             (

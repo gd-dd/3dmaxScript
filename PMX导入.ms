@@ -16,29 +16,41 @@ global PMX_Unicode = (dotNetClass "System.Text.Encoding").Unicode
 -------------------------------------------------------------------------------
 fn pmxReadULong f = (
     local v = readLong f
-    if v < 0 then v + 4294967296.0 else v  -- 2^32 补偿
+    if v == undefined or v < 0 do throw "PMX 数据截断或计数无效"
+    v
 )
 
 fn pmxReadIndex f size = (
     case size of (
-        1: readByte f
-        2: (readShort f #unsigned)
-        4: (pmxReadULong f)
+        1: readByte f #signed
+        2: (readShort f #signed)
+        4: (readLong f #signed)
         default: 0
     )
 )
 
 fn pmxReadText f encoding = (
     local len = pmxReadULong f
+    if len > 16777216 do throw "PMX 文本长度超过安全上限"
     if len == 0 then return ""
     local ba = dotNetObject "System.Byte[]" len
     local byteType = dotNetClass "System.Byte"
     for i = 0 to len-1 do
-        ba.SetValue (dotNet.ValueToDotNetObject (readByte f) byteType) i
+        ba.SetValue (dotNet.ValueToDotNetObject (readByte f #unsigned) byteType) i
     if encoding == 0 then PMX_Unicode.GetString ba else PMX_UTF8.GetString ba
 )
 
-fn pmxReadVec2 f = [readFloat f, readFloat f]
+fn pmxReadVertexIndex f size =
+(
+    case size of
+    (
+        1: (readByte f #unsigned)
+        2: (readShort f #unsigned)
+        4: (readLong f #unsigned)
+        default: (throw "Invalid PMX vertex index size")
+    )
+)
+fn pmxReadVec2 f = [readFloat f, readFloat f, 0]
 fn pmxReadVec3 f = [readFloat f, readFloat f, readFloat f]
 fn pmxReadVec4 f = [readFloat f, readFloat f, readFloat f, readFloat f]
 
@@ -104,6 +116,7 @@ struct PMXData (
     fn parse path = (
         local f = fopen path "rb"
         if f == undefined then (messageBox "无法打开文件" title:"PMX导入"; return false)
+        try (
         local sig = ""
         for i = 1 to 4 do sig += bit.intAsChar (readByte f)
         if sig != "PMX " then (fclose f; messageBox "不是有效的PMX文件" title:"PMX导入"; return false)
@@ -115,6 +128,7 @@ struct PMXData (
         )
         -- 全局标记
         local fc = readByte f
+        if fc != 8 do throw "PMX 全局头长度无效"
         for i = 1 to fc do (
             case i of (
                 1: encoding     = readByte f
@@ -168,7 +182,7 @@ struct PMXData (
         --  面索引
         ---------------------------------------------------------------
         local fiCnt = pmxReadULong f
-        for i = 1 to fiCnt do append faces (pmxReadIndex f idxV)
+        for i = 1 to fiCnt do append faces (pmxReadVertexIndex f idxV)
         ---------------------------------------------------------------
         --  纹理
         ---------------------------------------------------------------
@@ -184,9 +198,11 @@ struct PMXData (
             m.diffuse=pmxReadVec4 f; m.specular=pmxReadVec3 f; m.specPower=readFloat f
             m.ambient=pmxReadVec3 f; m.drawFlags=readByte f
             m.edgeColor=pmxReadVec4 f; m.edgeSize=readFloat f
-            m.texIdx=pmxReadIndex f idxT; m.toonIdx=pmxReadIndex f idxT
+            m.texIdx=pmxReadIndex f idxT
             m.sphereIdx=pmxReadIndex f idxT; m.sphereMode=readByte f
-            m.toonShared=readByte f; m.comment=pmxReadText f encoding
+            m.toonShared=readByte f
+            m.toonIdx=if m.toonShared == 1 then readByte f #unsigned else pmxReadIndex f idxT
+            m.comment=pmxReadText f encoding
             m.faceVertCount=pmxReadULong f
             append materials m
         )
@@ -199,25 +215,12 @@ struct PMXData (
             b.name=pmxReadText f encoding; b.nameEng=pmxReadText f encoding
             b.pos=pmxReadVec3 f; b.parentIdx=pmxReadIndex f idxB
             b.deformLayer=pmxReadULong f; b.flags=readShort f #unsigned
-            -- 接続先: 常にbone index, 0x0001なら座標も読む
-            b.tailBoneIdx=pmxReadIndex f idxB
             if bit.and b.flags 0x0001 != 0 then (
-                b.tailType=0; b.tailPos=pmxReadVec3 f
-            ) else ( b.tailType=1 )
-            -- 回転付与/移動付与 (0x0100/0x0200) - スキップ
-            if bit.and b.flags 0x0100 != 0 then (pmxReadIndex f idxB; readFloat f)
-            if bit.and b.flags 0x0200 != 0 then (pmxReadIndex f idxB; readFloat f)
-            -- 継承 (0x0800)
-            if bit.and b.flags 0x0800 != 0 then (
-                b.inheritIdx=pmxReadIndex f idxB; b.inheritWeight=readFloat f
-            )
-            -- 固定軸 (0x0400)
+                b.tailType=1; b.tailBoneIdx=pmxReadIndex f idxB
+            ) else (b.tailType=0; b.tailPos=pmxReadVec3 f; b.tailBoneIdx = -1)
+            if bit.and b.flags 0x0300 != 0 then (b.inheritIdx=pmxReadIndex f idxB; b.inheritWeight=readFloat f)
             if bit.and b.flags 0x0400 != 0 then b.fixedAxis=pmxReadVec3 f
-            -- ローカル軸 (0x1000)
-            if bit.and b.flags 0x1000 != 0 then (
-                b.localAxisX=pmxReadVec3 f; b.localAxisZ=pmxReadVec3 f
-            )
-            -- 外部親 (0x2000)
+            if bit.and b.flags 0x0800 != 0 then (b.localAxisX=pmxReadVec3 f; b.localAxisZ=pmxReadVec3 f)
             if bit.and b.flags 0x2000 != 0 then b.extParentKey=pmxReadULong f
             if bit.and b.flags 0x0020 != 0 then (
                 b.ikTarget=pmxReadIndex f idxB; b.ikIteration=pmxReadULong f
@@ -242,12 +245,20 @@ struct PMXData (
             mr.panel=readByte f; mr.morphType=readByte f
             local ofsCnt=pmxReadULong f
             for j=1 to ofsCnt do (
-                local vi=pmxReadIndex f idxV
-                local po=pmxReadVec3 f
-                if mr.morphType==1 then append mr.offsets #(vi, po)
-                else if mr.morphType==3 or mr.morphType==4 then
-                    append mr.offsets #(vi, pmxReadVec4 f)
-                else append mr.offsets #(vi, po)
+                case mr.morphType of (
+                    0: (pmxReadIndex f idxMrph; readFloat f)
+                    1: (local vi=pmxReadVertexIndex f idxV; local po=pmxReadVec3 f; append mr.offsets #(vi,po))
+                    2: (pmxReadIndex f idxB; pmxReadVec3 f; pmxReadVec4 f)
+                    3: (pmxReadVertexIndex f idxV; pmxReadVec4 f)
+                    4: (pmxReadVertexIndex f idxV; pmxReadVec4 f)
+                    5: (pmxReadVertexIndex f idxV; pmxReadVec4 f)
+                    6: (pmxReadVertexIndex f idxV; pmxReadVec4 f)
+                    7: (pmxReadVertexIndex f idxV; pmxReadVec4 f)
+                    8: (pmxReadIndex f idxM; readByte f; for k=1 to 28 do readFloat f)
+                    9: (pmxReadIndex f idxMrph; readFloat f)
+                    10: (pmxReadIndex f idxR; readByte f; pmxReadVec3 f; pmxReadVec3 f)
+                    default: (throw "不支持的 PMX 变形类型")
+                )
             )
             append morphs mr
         )
@@ -256,9 +267,13 @@ struct PMXData (
         ---------------------------------------------------------------
         local dfCnt = pmxReadULong f
         for i=1 to dfCnt do (
-            local dt=readByte f
-            if dt==0 then append dispFrames #("bone", pmxReadIndex f idxB)
-            else append dispFrames #("morph", pmxReadIndex f idxMrph)
+            pmxReadText f encoding; pmxReadText f encoding; readByte f
+            local entries=pmxReadULong f
+            for j=1 to entries do (
+                local dt=readByte f
+                if dt==0 then append dispFrames #("bone",pmxReadIndex f idxB)
+                else append dispFrames #("morph",pmxReadIndex f idxMrph)
+            )
         )
         ---------------------------------------------------------------
         --  刚体（跳过）
@@ -289,6 +304,7 @@ struct PMXData (
         fclose f
         format "PMX解析: 顶点% 三角面% 材质% 骨骼%\n" vertices.count (faces.count/3) materials.count bones.count
         true
+        ) catch (local reason=getCurrentException(); try(fclose f)catch(); throw())
     )  -- end fn parse
 )  -- end struct PMXData
 
@@ -308,15 +324,16 @@ fn pmxBuildBoneHierarchy pmxData = (
             local stack = #(i)
             local cur = i
             local b = pmxData.bones[cur]
-            while b.parentIdx < boneCount and (b.parentIdx + 1) != cur \
+            while b.parentIdx >= 0 and b.parentIdx < boneCount and (b.parentIdx + 1) != cur \
                 and allBones[b.parentIdx + 1] == undefined do (
+                if findItem stack (b.parentIdx+1) > 0 do throw "PMX 骨骼父子关系循环"
                 cur = b.parentIdx + 1
                 append stack cur
                 b = pmxData.bones[cur]
             )
             -- 栈顶是已存在的骨骼或根骨骼，逐层弹出创建
             local parentForNext = undefined
-            if b.parentIdx < boneCount and (b.parentIdx + 1) != cur then
+            if b.parentIdx >= 0 and b.parentIdx < boneCount and (b.parentIdx + 1) != cur then
                 parentForNext = allBones[b.parentIdx + 1]
 
             while stack.count > 0 do (
@@ -324,23 +341,23 @@ fn pmxBuildBoneHierarchy pmxData = (
                 stack.count = stack.count - 1
                 b = pmxData.bones[cur]
 
-                local bn = BoneSys.createBone b.pos [0,0,0] [0,0,1]
+                local bn = BoneSys.createBone b.pos (b.pos+[5,0,0]) [0,0,1]
                 bn.name = b.name
                 bn.width = 0.5; bn.height = 0.5; bn.taper = 90
 
                 local tail = b.pos + [0,0,5]
-                if b.tailType == 0 then tail = b.tailPos
+                if b.tailType == 0 then tail = b.pos+b.tailPos
                 else if b.tailType == 1 and b.tailBoneIdx >= 0 and b.tailBoneIdx < boneCount then
                     tail = pmxData.bones[b.tailBoneIdx + 1].pos
 
                 local dir = tail - b.pos
                 bn.length = if (length dir) > 0.001 then (length dir) else 5.0
                 if (length dir) > 0.001 then (
-                    local zA = normalize dir
+                    local xA = normalize dir
                     local up = [0,0,1]
-                    if abs(dot zA up) > 0.999 then up = [0,1,0]
-                    local xA = normalize (cross up zA)
-                    local yA = normalize (cross zA xA)
+                    if abs(dot xA up) > 0.999 then up = [0,1,0]
+                    local yA = normalize (cross up xA)
+                    local zA = normalize (cross xA yA)
                     bn.transform = matrix3 xA yA zA b.pos
                 ) else bn.pos = b.pos
 
@@ -368,7 +385,7 @@ fn pmxBuildScene pmxData baseDir = (
         mat.glossiness=amin 100 (m.specPower*100.0/256.0)
         mat.ambient=color (m.ambient.x*255) (m.ambient.y*255) (m.ambient.z*255)
         if bit.and m.drawFlags 0x01 != 0 then mat.twoSided=true
-        if m.texIdx<pmxData.textures.count then (
+        if m.texIdx>=0 and m.texIdx<pmxData.textures.count then (
             local tp=pmxResolveTex baseDir pmxData.textures[m.texIdx+1]
             if tp!=undefined then (
                 local bmp=bitmaptexture(); bmp.filename=tp
@@ -387,18 +404,12 @@ fn pmxBuildScene pmxData baseDir = (
     ---------------------------------------------------------------
     local vCnt=pmxData.vertices.count
     local triCnt=pmxData.faces.count/3
-    local msh=mesh name:pmxData.modelName vertices:#() faces:#()
-    if msh.name=="" then msh.name="PMX_Model"
-    for v=1 to vCnt do append msh.vertices pmxData.vertices[v].pos
+    local verts=for v in pmxData.vertices collect v.pos
+    local tris=for f=1 to triCnt collect [pmxData.faces[f*3-2]+1,pmxData.faces[f*3]+1,pmxData.faces[f*3-1]+1]
+    local msh=mesh name:pmxData.modelName vertices:verts faces:tris
     msh.numTVerts=vCnt; buildTVFaces msh false
     for v=1 to vCnt do setTVert msh v pmxData.vertices[v].uv
-    for f=1 to triCnt do (
-        local i0=pmxData.faces[f*3-2]+1
-        local i1=pmxData.faces[f*3-1]+1
-        local i2=pmxData.faces[f*3]+1
-        append msh.faces [i0,i2,i1]
-        setTVFace msh f [i0,i2,i1]
-    )
+    for f=1 to triCnt do setTVFace msh f tris[f]
     update msh
     ---------------------------------------------------------------
     --  材质 ID
@@ -430,41 +441,18 @@ fn pmxBuildScene pmxData baseDir = (
                     bMap[i]=skinOps.getNumberBones sm
                 )
             )
+            select msh; max modify mode; modPanel.setCurrentObject sm
             for v=1 to vCnt do (
-                local vd=pmxData.vertices[v]
-                if vd.boneIndices.count>0 then (
-                    case vd.weightType of (
-                        0: (
-                            local bi=vd.boneIndices[1]+1
-                            if bi<=bMap.count and bMap[bi]!=undefined then
-                                skinOps.setVertexWeights sm v bMap[bi] 1.0
-                        )
-                        1: (
-                            for bi=1 to 2 do (
-                                local idx=vd.boneIndices[bi]+1
-                                local w=if bi==1 then vd.boneWeights[1] else (1.0-vd.boneWeights[1])
-                                if idx<=bMap.count and bMap[idx]!=undefined then
-                                    skinOps.setVertexWeights sm v bMap[idx] w
-                            )
-                        )
-                        2: (
-                            for bi=1 to vd.boneIndices.count do (
-                                local idx=vd.boneIndices[bi]+1
-                                if idx<=bMap.count and bMap[idx]!=undefined then
-                                    skinOps.setVertexWeights sm v bMap[idx] vd.boneWeights[bi]
-                            )
-                        )
-                        3: ( -- SDEF→BDEF2
-                            for bi=1 to 2 do (
-                                local idx=vd.boneIndices[bi]+1
-                                local w=if bi==1 then vd.boneWeights[1] else (1.0-vd.boneWeights[1])
-                                if idx<=bMap.count and bMap[idx]!=undefined then
-                                    skinOps.setVertexWeights sm v bMap[idx] w
-                            )
-                        )
+                local vd=pmxData.vertices[v]; local ids=#(); local weights=#()
+                for j=1 to vd.boneIndices.count do (
+                    local idx=vd.boneIndices[j]+1
+                    if idx>=1 and idx<=bMap.count and bMap[idx]!=undefined and vd.boneWeights[j]>0 do (
+                        append ids bMap[idx]; append weights vd.boneWeights[j]
                     )
                 )
+                if ids.count>0 do skinOps.ReplaceVertexWeights sm v ids weights
             )
+            skinOps.Invalidate sm 1
         )
     )
     ---------------------------------------------------------------
@@ -473,7 +461,7 @@ fn pmxBuildScene pmxData baseDir = (
     local hasMrph=false
     for mr in pmxData.morphs do if mr.morphType==1 and mr.offsets.count>0 then (hasMrph=true; exit)
     if hasMrph then (
-        local mm=morpher(); addModifier msh mm
+        local mm=morpher(); addModifier msh mm before:msh.modifiers.count
         local ch=1
         for mi=1 to pmxData.morphs.count do (
             local mr=pmxData.morphs[mi]
@@ -503,10 +491,18 @@ fn importPMXFile filePath showUI:false = (
     )
     local pd=PMXData()
     if not pd.parse filePath then return undefined
+    if mod pd.faces.count 3 != 0 do throw "PMX 面索引数量无效"
+    for vi in pd.faces do if vi<0 or vi>=pd.vertices.count do throw "PMX 顶点索引越界"
     local baseDir=getFilenamePath filePath
     local result=undefined
-    with redraw off, undo "PMX导入" on (
-        result=pmxBuildScene pd baseDir
+    local previousNodes=objects as array
+    try (
+        with redraw off, undo "PMX导入" on (result=pmxBuildScene pd baseDir)
+    ) catch (
+        local reason=getCurrentException()
+        local partial=for n in objects where findItem previousNodes n == 0 collect n
+        with undo off (delete partial)
+        throw()
     )
     if result!=undefined and showUI then (
         local msg="导入完成!\n\n"
@@ -572,7 +568,11 @@ rollout PMXImportRollout "PMX 导入" width:420
         if selectedFilePath=="" then (messageBox "请先选择PMX文件" title:"PMX导入"; return false)
         btnBrowse.enabled=false; btnImport.enabled=false
         local st=timestamp()
-        local result=importPMXFile selectedFilePath showUI:true
+        local result=undefined
+        try (result=importPMXFile selectedFilePath showUI:true) catch (
+            lblInfo.text="导入失败，可重新选择文件"
+            messageBox (getCurrentException() as string) title:"PMX 导入失败"
+        )
         local el=(timestamp()-st)/1000.0
         if result!=undefined then (
             edtPath.text=""; selectedFilePath=""; btnImport.enabled=false
