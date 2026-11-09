@@ -53,6 +53,7 @@ fn LXMaxBridgeRun id =
         "pmx-import": "PMX导入.ms"
         "root-cleanup": "清理根骨骼.ms"
         "rig-workbench": "LX_RigSkin.ms"
+        "ribbon": "LX_Ribbon.ms"
         default: undefined
     )
     if script == undefined then throw "Unknown plugin ID"

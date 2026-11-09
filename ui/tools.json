@@ -11,6 +11,12 @@
       "group": "绑定"
     },
     {
+      "id": "ribbon",
+      "label": "LX 飘带",
+      "description": "在选中 Max 内解算与烘焙飘带骨骼",
+      "group": "动画"
+    },
+    {
       "id": "animation-bake",
       "label": "动画烘焙",
       "description": "按采样间隔烘焙动画",
