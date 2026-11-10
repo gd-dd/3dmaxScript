@@ -1,6 +1,6 @@
 """Seven-stage Max workflow, with shared scene and visibility controls."""
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,QLineEdit,QTreeWidget,QTreeWidgetItem,QAbstractItemView,QTabWidget,QCheckBox,QSplitter,QSizePolicy,QScrollArea,QFrame
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,QComboBox,QLineEdit,QTreeWidget,QTreeWidgetItem,QAbstractItemView,QTabWidget,QCheckBox,QSplitter,QSizePolicy,QScrollArea,QFrame
 from .workbench import RigWorkbench
 from .selection_ui import SelectionMixin
 
@@ -39,7 +39,22 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         # Existing skeleton controls become the detailed stage, with viewport operations first.
         self.tabs.addTab(old[0][0],'03  自定义与定位')
         self.child_name=QLineEdit('LX_Custom');self.child_length=self.number(.001,100000,10,1)
-        self.skeleton.insertRow(0,'新子骨骼名称',self.child_name);self.skeleton.insertRow(1,'子骨骼长度',self.child_length)
+        child_box=QWidget();child_form=QFormLayout(child_box);child_form.setContentsMargins(0,0,0,0)
+        self.child_parent=None;self.child_parent_scene=None;self.child_parent_label=QLabel('未记住父骨骼：使用骨骼栏单选或视口单选 Bone');self.child_parent_label.setWordWrap(True)
+        child_form.addRow(self.child_parent_label)
+        self.actions(child_form,('记住骨骼栏所选父骨骼',lambda:self.remember_child_parent(True)),('记住视口所选父骨骼',lambda:self.remember_child_parent(False)))
+        child_form.addRow('新子骨骼名称',self.child_name);child_form.addRow('长度（世界单位）',self.child_length)
+        self.child_start=QLineEdit();self.child_direction=QLineEdit()
+        self.child_start.setPlaceholderText('留空：父骨骼末端；或输入 X, Y, Z')
+        self.child_direction.setPlaceholderText('留空：继承父骨骼方向；或输入 X, Y, Z')
+        for key,title,field in [('start','起点',self.child_start),('direction','方向点（只定方向）',self.child_direction)]:
+            child_form.addRow(title,field)
+            label='起点' if key=='start' else '方向'
+            self.actions(child_form,(label+' · 对象轴心',lambda k=key:self.capture_child_point(k,'pivot')),(label+' · 顶点中心',lambda k=key:self.capture_child_point(k,'vertex')))
+        tip=QLabel('先记住父骨骼，再选参考对象取点。支持无修改器的可编辑多边形，或当前 Edit Poly 的顶点；多选取平均中心。取点只读、不改堆栈。方向点远近不影响长度。');tip.setWordWrap(True);child_form.addRow(tip)
+        self.actions(child_form,('按起点 / 方向点添加',lambda:self.add_child(False)),('从父骨骼末端顺延添加',lambda:self.add_child(True)))
+        self.actions(child_form,('清空取点（恢复继承）',lambda:(self.child_start.clear(),self.child_direction.clear())))
+        self.skeleton.insertRow(0,'添加普通 Bone',child_box)
         symmetry=QWidget();symmetry_form=QVBoxLayout(symmetry);symmetry_form.setContentsMargins(0,0,0,0)
         self.symmetry_side=QComboBox();self.symmetry_side.addItem('左 → 右','L');self.symmetry_side.addItem('右 → 左','R')
         self.symmetry_whole=QCheckBox('选中骨架整侧（关闭则为选中骨骼及子骨骼）');self.symmetry_whole.setChecked(True)
@@ -53,22 +68,24 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         run=QPushButton('对称选中骨架');run.clicked.connect(lambda:self.guard(self.mirror_bones));symmetry_form.addWidget(run)
         tip=QLabel('先在视口选骨骼。中线为世界 X；自定义骨骼用 L_ / R_ 配对。\n自动同步等待当前拖动完成，避免打断 Max 撤销；每次同步可单独撤销。');tip.setWordWrap(True);symmetry_form.addWidget(tip)
         self.skeleton.insertRow(0,'骨架对称',symmetry)
-        self.actions(self.skeleton,('为视口选中骨骼加子骨骼',lambda:self.mutate('bone.child',{'name':self.child_name.text(),'length':self.child_length.value()})))
         self.guide_level=QComboBox()
         for title,key in [('顶点','vertex'),('边 / 循环边','edge'),('面','face')]:self.guide_level.addItem(title,key)
         self.skeleton.addRow('中心点来源',self.guide_level)
         self.actions(self.skeleton,('切换视口子对象选择',lambda:self.call('selection.mode',self.params(level=self.guide_level.currentData()))),('循环边',lambda:self.call('selection.expand',self.params(level='edge',operation='loop'))),('在选择平均中心打点',lambda:self.mutate('guide.center',{'level':self.guide_level.currentData()})))
-        self.align_target=QComboBox();self.skeleton.addRow('端点对齐目标',self.align_target)
+        self.align_target=QComboBox();self.skeleton.addRow('已有骨骼端点对齐（改变长度）',self.align_target)
         self.actions(self.skeleton,('起点对齐目标',lambda:self.align('start')),('终点对齐目标',lambda:self.align('end')))
         four=self.page('04  IK 与长度定型')
         hint=QLabel('先调整骨架到模型内部。定型会固定 Bone 长度，为生成的人体手臂、腿创建 HI IK；脊柱、颈部、手指保持 FK。可使用 Max 撤销回退。');hint.setWordWrap(True);four.addRow(hint)
         self.bend_segments=QCheckBox('允许大小臂 / 大小腿中间分段参与弯曲（默认关闭）');four.addRow(self.bend_segments)
-        self.actions(four,('一键添加 IK 并固定长度',lambda:self.mutate('rig.finalize',{'bones':self.selected_bones(),'bendSegments':self.bend_segments.isChecked()})))
+        self.ik_size=self.number(.05,20,1,.1);four.addRow('IK 显示倍率（按骨架高度）',self.ik_size)
+        self.actions(four,('一键添加 IK 并固定长度',lambda:self.mutate('rig.finalize',{'bones':self.selected_bones(),'bendSegments':self.bend_segments.isChecked(),'displayScale':self.ik_size.value()})))
         five=self.page('05  控制器')
         self.control_shape=QComboBox()
         for label,key in [('圆环','circle'),('方框','rectangle'),('Point 虚拟体','point')]:self.control_shape.addItem(label,key)
-        self.control_size=self.number(.001,100000,10,1);five.addRow('控制器形状',self.control_shape);five.addRow('尺寸',self.control_size)
-        self.actions(five,('创建 IK 控制器与 Root',lambda:self.mutate('controls.create',{'shape':self.control_shape.currentData(),'size':self.control_size.value()})),('为列表所选对象创建控制器',lambda:self.mutate('controls.create',{'nodes':self.selected(),'shape':self.control_shape.currentData(),'size':self.control_size.value()})))
+        self.control_size=self.number(.05,20,1,.1);five.addRow('控制器形状',self.control_shape);five.addRow('显示倍率（按骨架高度）',self.control_size)
+        hint=QLabel('默认 1 倍：圆环半径 / Point 尺寸为骨架高度的 3%，Root 为 5%。同场多套骨架分别计算；已有 Bone 按实际层级识别。仅调整显示大小，不缩放骨架。');hint.setWordWrap(True);five.addRow(hint)
+        self.actions(five,('创建 IK 控制器与 Root',lambda:self.mutate('controls.create',{'shape':self.control_shape.currentData(),'displayScale':self.control_size.value()})),('为列表所选对象创建控制器',lambda:self.mutate('controls.create',{'nodes':self.selected(),'shape':self.control_shape.currentData(),'displayScale':self.control_size.value()})))
+        self.actions(five,('按当前骨架重新适配显示尺寸',lambda:self.mutate('controls.resize',{'nodes':self.selected(),'displayScale':self.control_size.value(),'ikScale':self.ik_size.value()})))
         six=self.page('06  自动蒙皮')
         self.bind_method=QComboBox()
         for label,key in [('骨骼线段距离（快速）','segment'),('体素内部距离场','voxel'),('Max 原生包络','envelope')]:self.bind_method.addItem(label,key)
@@ -106,6 +123,34 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         for i in range(self.tabs.count()):self.steps.addItem(self.tabs.tabText(i))
         self.tabs.setCurrentIndex(0)
         self.build_shared_scene(two,w)
+    def remember_child_parent(self,from_list):
+        refs=self.selected_bones()
+        if from_list and len(refs)!=1:raise ValueError('请在骨骼栏只选一根普通 Bone')
+        self.call('bone.parent_capture',{'node':refs[0]} if from_list else {},self.set_child_parent)
+    def set_child_parent(self,data):
+        self.child_parent=data['node'];self.child_parent_scene=self.scene
+        self.child_parent_label.setText('当前父骨骼：'+data['name']+'（添加成功后自动改为新骨骼）')
+    def capture_child_point(self,key,mode):
+        def done(data):
+            field=self.child_start if key=='start' else self.child_direction
+            field.setText(', '.join(format(v,'.9g') for v in data['position']))
+            field.setToolTip(data['message'])
+        self.call('point.capture',{'mode':mode},done)
+    def add_child(self,extend):
+        refs=self.selected_bones();parent=self.child_parent if self.child_parent_scene==self.scene else None
+        if not parent and len(refs)==1:parent=refs[0]
+        params={'name':self.child_name.text(),'length':self.child_length.value(),'parent':parent,'extend':extend}
+        if len(refs)==1 and refs[0]!=parent:params['fallbackParent']=refs[0]
+        if not extend:
+            for key,field in [('start',self.child_start),('direction',self.child_direction)]:
+                if field.text().strip():
+                    from .bone_creation import point
+                    params[key]=point(field.text().replace('，',',').split(','))
+        def done(data):
+            self.set_child_parent(data)
+            def refreshed(scene):self.load_scene(scene);self.choose_bone_nodes([data['node']])
+            self.call('scene.inspect',{},refreshed)
+        self.call('bone.child',params,done)
     def symmetry_options(self):
         return dict(bones=self.selected_bones(),side=self.symmetry_side.currentData(),wholeRig=self.symmetry_whole.isChecked(),autoCenter=self.symmetry_auto_center.isChecked(),center=self.symmetry_center.value())
     def mirror_bones(self):
@@ -193,6 +238,10 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
     def begin_brush(self):
         self.edit_influences(lambda:self.call('brush.start',self.params(bones=self.selected_influences(),mode=self.brush_mode.currentData(),radius=self.brush_radius.value(),strength=self.brush_strength.value(),value=abs(self.value.value()),selectedOnly=self.brush_selected.isChecked())))
     def load_scene(self,data):
+        if hasattr(self,'child_parent_scene') and (self.child_parent_scene!=data['scene'] or self.child_parent not in {n['id'] for n in data['nodes']}):
+            self.child_parent=None;self.child_parent_scene=None
+            self.child_parent_label.setText('未记住父骨骼：使用骨骼栏单选或视口单选 Bone')
+            self.child_start.clear();self.child_direction.clear()
         previous_skin=self.skin.currentData(Qt.ItemDataRole.UserRole+1)
         self.tree.blockSignals(True)
         super().load_scene(data)

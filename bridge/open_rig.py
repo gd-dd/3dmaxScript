@@ -1,7 +1,9 @@
 """Fixed Max entry point; usable without the shelf or the session provider."""
 import sys,hashlib,importlib
 from pathlib import Path
-root=Path(__file__).resolve().parents[1]
+# python.ExecuteFile shares Max's __main__ globals; __file__ may belong to a
+# previously evaluated script. The compiled filename identifies this entry.
+root=Path(sys._getframe().f_code.co_filename).resolve().parents[1]
 loaded=sys.modules.get('rig')
 if loaded and Path(loaded.__file__).resolve().parent!=root/'rig':
     raise RuntimeError('另一版本的绑定蒙皮工具已加载，请重新打开 Max 后使用此版本。')
@@ -23,7 +25,7 @@ if ui is not None and getattr(ui,'_code_digest',None)!=digest:
     view=sys.modules.get('rig.weight_view')
     if view:view.clear()
     # Keep history.py and its undo callbacks alive. Reload only implementation/UI.
-    for name in ('weights','binding','weight_edit','humanoid','theme','scene_ui','workbench',
+    for name in ('weights','binding','weight_edit','humanoid','bone_creation','rig_scale','theme','scene_ui','workbench',
                  'max_host','workflow_host','brush','symmetry','scene_io','batch_host',
                  'weight_view','selection_ui','workflow_ui','max_ui'):
         key='rig.'+name

@@ -1,7 +1,7 @@
 """Stage commands. Nodes carry membership/role metadata in the Max scene."""
 import json,math,uuid
 from . import max_host as H
-from . import humanoid,binding,weight_edit
+from . import humanoid,binding,weight_edit,bone_creation,rig_scale
 rt=H.rt
 
 def prop(n,key):return str(rt.getUserProp(n,key) or '')
@@ -22,6 +22,54 @@ def endpoint(b):
         children=[n for n in b.children if H.is_biped(n) and H.node_category(n)=='bones']
         if children:return sum((H.position(n) for n in children),rt.Point3(0,0,0))/len(children)
     return H.position(b)
+
+
+def is_ik(n):return H.cls(n.controller)=='IKChainControl'
+
+
+def scale_context(targets=None):
+    records=[]
+    for n in rt.objects:
+        category=H.node_category(n)
+        record=dict(id=H.handle(n),parent=H.handle(n.parent) if n.parent else None,
+                    category=category,rigId=prop(n,'LXRigId'),role=prop(n,'LXRole'),
+                    biped=H.is_biped(n),controller=H.cls(n.controller))
+        if category=='bones':record.update(position=H.vec(H.position(n)),end=H.vec(endpoint(n)))
+        if prop(n,'LXControlGroup'):
+            try:record['controlGroup']=json.loads(prop(n,'LXControlGroup'))
+            except (ValueError,TypeError):pass
+        if is_ik(n):
+            record['category']='controls'
+            record.update(anchor=H.handle(n.controller.startJoint),endJoint=H.handle(n.controller.endJoint))
+        records.append(record)
+    return rig_scale.skeleton_scales(records,targets=[H.handle(n) for n in targets] if targets is not None else None)
+
+
+def group_key(info):return json.dumps(info['group'],separators=(',',':'))
+
+
+def target_scale(target,context):
+    info=context.get(H.handle(target))
+    if info is None:raise ValueError('无法判断 %s 所属骨架；请选择骨骼或关联的 IK / 控制器'%target.name)
+    if any(H.is_biped(H.node(ref)) for ref in info['bones']):
+        raise ValueError('Biped 使用原生控制器；普通 Bone 控制器流程不会改写其层级')
+    return info
+
+
+def ik_display(goal,height,multiplier=1):
+    controller=goal.controller
+    for key,ratio in [('goalSize',.02),('effectorSize',.015),('vhSize',.015),('vhLength',.1)]:
+        rt.setProperty(controller,rt.Name(key),rig_scale.display_size(height,ratio*float(multiplier)))
+
+
+def control_display(control,height,multiplier=1):
+    ratio=.05 if prop(control,'LXRole')=='Root' else .03
+    size=rig_scale.display_size(height,ratio*float(multiplier));kind=H.cls(control)
+    if kind=='Circle':control.radius=size
+    elif kind=='Rectangle':control.length=size*2;control.width=size*2
+    elif kind=='Point':control.size=size
+    else:raise ValueError('只支持本工具生成的 Circle / Rectangle / Point 显示尺寸')
+    return size
 
 def set_segment(b,a,z):
     delta=z-a;length=float(rt.length(delta))
@@ -102,32 +150,86 @@ def create_humanoid(p):
     rt.setUserProp(center,'LXRigId',rig_id);center.wireColor=rt.Color(134,184,61)
     for spec in specs:
         result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=0 if spec['role']=='Pelvis' else .15
-        free_bone(b);b.showLinks=True;b.showLinksOnly=False;mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
+        b.setBoneEnable(False,rt.currentTime);b.showLinks=True;b.showLinksOnly=False;mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
         if spec['chain']:rt.setUserProp(b,'LXChain',spec['chain'])
         b.parent=created[spec['parent']] if spec['parent'] else center
-        free_bone(b);created[spec['role']]=b
+        created[spec['role']]=b
     # Set final segments after parenting: Max can update Bone stretch while links are attached.
     for spec in specs:
-        b=created[spec['role']];free_bone(b)
+        b=created[spec['role']]
         set_segment(b,rt.Point3(*spec['start']),rt.Point3(*spec['end']))
+    # Enable automatic Bone behavior only after all transforms and hierarchy
+    # are final. This records the right stretch reference even on tiny rigs.
+    for b in created.values():free_bone(b)
     for spec in specs:
         parent=next((s for s in specs if s['role']==spec['parent']),None)
         if parent and binding.distance(parent['end'],spec['start'])<float(p.get('height',170))*1e-8:
             if float(rt.distance(endpoint(created[parent['role']]),created[spec['role']].pos))>float(p.get('height',170))*1e-5:
-                raise RuntimeError('骨骼关节未连接：'+spec['role'])
+                raise RuntimeError('骨骼关节未连接：%s（误差 %g）'%(spec['role'],float(rt.distance(endpoint(created[parent['role']]),created[spec['role']].pos))))
     rt.select(H.arr(list(created.values())))
     return {'message':'已创建 %d 根自由 Bone；无 IK，可移动旋转，长度未锁定'%len(created),'nodes':[H.handle(b) for b in created.values()],'center':H.handle(center)}
 
 @H.command('bone.child',True)
 def child(p):
     chosen=list(rt.selection)
-    parent=H.node(p['parent']) if p.get('parent') else chosen[0] if len(chosen)==1 else None
+    if p.get('parent'):
+        try:parent=H.node(p['parent'])
+        except ValueError:
+            if not p.get('fallbackParent'):raise
+            parent=H.node(p['fallbackParent'])
+    else:parent=chosen[0] if len(chosen)==1 else None
     if parent is None:raise ValueError('请在视口选择一个父骨骼')
     if H.cls(parent)!='BoneGeometry':raise ValueError('自由子骨骼要求 Bone 父骨骼')
-    start=endpoint(parent);end=start+rt.Point3(float(p.get('length',10)),0,0)
-    result=H.create_bone({'start':H.vec(start),'end':H.vec(end),'name':p.get('name','LX_Custom'),'parent':H.handle(parent)})
-    b=H.node(result['node']);free_bone(b);mark(b,'bones');rt.setUserProp(b,'LXRigId',prop(parent,'LXRigId'));rt.select(b)
+    if prop(parent,'LXFinalized'):raise ValueError('请在 IK 定型前添加自由子骨骼')
+    inherited=endpoint(parent)-parent.objectTransform.row4
+    start=H.vec(endpoint(parent)) if p.get('extend') or p.get('start') is None else p['start']
+    direction=H.vec(rt.Point3(*bone_creation.point(start))+inherited) if p.get('extend') or p.get('direction') is None else p['direction']
+    start,end=bone_creation.segment(start,direction,p.get('length',10))
+    # Validate before allocating a node. Parenting can change Bone stretch: reapply the segment.
+    result=H.create_bone({'start':start,'end':end,'name':p.get('name','LX_Custom')})
+    b=H.node(result['node']);free_bone(b)
+    parent_align=bool(parent.boneAutoAlign)
+    try:
+        parent.boneAutoAlign=False
+        b.parent=parent
+        b.width=float(parent.width);b.height=float(parent.height)
+        free_bone(b);set_segment(b,rt.Point3(*start),rt.Point3(*end))
+    finally:parent.boneAutoAlign=parent_align
+    mark(b,'bones');rt.setUserProp(b,'LXRigId',prop(parent,'LXRigId'));rt.select(b)
+    result.update(name=str(b.name),start=H.vec(H.position(b)),end=H.vec(endpoint(b)),message='已添加子骨骼；长度独立，已选中新骨骼，可继续顺延')
     return result
+
+
+@H.command('bone.parent_capture')
+def capture_parent(p):
+    selected=[H.node(p['node'])] if p.get('node') else list(rt.selection)
+    if len(selected)!=1 or H.cls(selected[0])!='BoneGeometry':
+        raise ValueError('请选择一根普通 Bone；Biped 继续使用其原生骨架系统')
+    bone=selected[0]
+    return {'node':H.handle(bone),'name':str(bone.name),'message':'已记住父骨骼，可切换到模型取点'}
+
+
+@H.command('point.capture')
+def capture_point(p):
+    selected=[H.node(p['node'])] if p.get('node') else list(rt.selection)
+    if len(selected)!=1:raise ValueError('请在 Max 中只选一个取点对象')
+    obj=selected[0];mode=p.get('mode','pivot');count=1
+    if mode=='pivot':position=H.position(obj)
+    elif mode=='vertex':
+        if H.node_category(obj)!='models':raise ValueError('顶点取点需要可编辑多边形或 Edit Poly 模型')
+        current=rt.modPanel.getCurrentObject()
+        if H.cls(current)=='Edit_Poly' and current in list(obj.modifiers):
+            selected=ids(current.GetSelection(rt.Name('vertex'),node=obj))
+            points=[current.GetVertex(i,node=obj)*obj.objectTransform for i in selected]
+        elif H.cls(obj.baseObject)=='Editable_Poly' and not len(obj.modifiers):
+            selected=ids(rt.polyop.getVertSelection(obj.baseObject))
+            points=[rt.polyop.getVert(obj.baseObject,i)*obj.objectTransform for i in selected]
+        else:raise ValueError('请在当前 Edit Poly 修改器选顶点，或使用无修改器的可编辑多边形；不会自动改堆栈')
+        if not points:raise ValueError('尚未选中顶点；多选顶点时取世界坐标平均中心')
+        count=len(points);position=sum(points,rt.Point3(0,0,0))/count
+    else:raise ValueError('未知取点方式')
+    return {'position':H.vec(position),'node':H.handle(obj),'name':str(obj.name),'count':count,
+            'message':'已读取 %s 的%s'%(obj.name,'轴心' if mode=='pivot' else '%d 个顶点平均中心'%count)}
 
 @H.command('bone.align',True)
 def align_endpoint(p):
@@ -172,16 +274,19 @@ def finalize(p):
     rigs={prop(n,'LXRigId') for n in chosen if prop(n,'LXRigId')}
     bones=[n for n in members('bones') if prop(n,'LXRigId') in rigs] if rigs else chosen
     if any(prop(n,'LXFinalized') for n in bones):raise ValueError('骨架已定型；如需返回调整，请使用 Max 撤销')
+    sizes=scale_context(bones);multiplier=float(p.get('displayScale',1))
+    rig_scale.display_size(1,multiplier)
+    for b in bones:target_scale(b,sizes)
     chains={}
     for b in bones:
         if H.cls(b)!='BoneGeometry':continue
-        key=(prop(b,'LXRigId'),prop(b,'LXChain'))
+        key=(group_key(sizes[H.handle(b)]),prop(b,'LXChain'))
         if key[1]:chains.setdefault(key,[]).append(b)
     goals=[]
-    for (rig_id,name),links in chains.items():
+    for (_,name),links in chains.items():
         starts=[n for n in links if n.parent not in links]
         if len(starts)!=1:raise ValueError('肢体链层级不完整：'+name)
-        start=starts[0];end=start
+        start=starts[0];end=start;rig_id=prop(start,'LXRigId')
         while True:
             children=[c for c in end.children if c in links]
             if not children:break
@@ -191,6 +296,7 @@ def finalize(p):
         if len(terminal)!=1:raise ValueError('手或脚末端不完整：'+name)
         goal=rt.IKSys.ikChain(start,terminal[0],'IKHISolver')
         if goal is None:raise ValueError('Max 未能创建 IK：'+name)
+        ik_display(goal,target_scale(start,sizes)['height'],multiplier)
         # Only shoulder/elbow (or hip/knee) joints bend unless segment bending is requested.
         for link in links:
             role=prop(link,'LXRole');intermediate=role.rsplit('_',1)[-1]!='01'
@@ -205,31 +311,60 @@ def finalize(p):
 
 @H.command('controls.create',True)
 def controls(p):
-    if any(H.is_biped(H.node(i)) for i in p.get('nodes',[])):
-        raise ValueError('Biped 使用原生控制器；不能用普通 Bone 控制器流程改写其层级')
-    roots=[n for n in members('controls') if prop(n,'LXRole')=='Root']
-    root=roots[0] if roots else mark(rt.Point(name=rt.uniqueName('LX_Root'),pos=rt.Point3(0,0,0),size=float(p.get('size',10)),box=True,cross=True),'controls','Root')
-    targets=[H.node(i) for i in p.get('nodes',[])] or [n for n in members('controls') if prop(n,'LXRole')=='IK']
-    count=0
+    targets=[H.node(i) for i in p.get('nodes',[])] or [n for n in rt.objects if is_ik(n)]
+    if not targets:raise ValueError('没有普通 Bone 的 IK 目标；可在骨骼栏选择目标后创建控制器。Biped 使用原生控制器')
+    sizes=scale_context(targets);groups={};kind=p.get('shape','circle');multiplier=float(p.get('displayScale',1))
+    if kind not in ('circle','rectangle','point'):raise ValueError('未知控制器形状')
+    rig_scale.display_size(1,multiplier)
+    # Preflight every target before creating any Root, including the implicit IK path.
     for target in targets:
-        if target==root or prop(target,'LXControl'):continue
-        kind=p.get('shape','circle');size=float(p.get('size',10))
-        if kind=='circle':ctrl=rt.Circle(radius=size)
-        elif kind=='rectangle':ctrl=rt.Rectangle(length=size*2,width=size*2)
-        elif kind=='point':ctrl=rt.Point(size=size,cross=True,box=True)
-        else:raise ValueError('未知控制器形状')
-        ctrl.name=rt.uniqueName(str(target.name)+'_CTRL');ctrl.transform=rt.copy(target.transform);ctrl.parent=root
-        mark(ctrl,'controls','Controller');rt.setUserProp(target,'LXControl',H.handle(ctrl))
-        if prop(target,'LXRole')=='IK':target.parent=ctrl
-        else:
-            # Insert a control parent preserving world transforms; no controller overwrite.
-            old=target.parent;ctrl.parent=old if old else root;tm=rt.copy(target.transform);target.parent=ctrl;target.transform=tm
-        count+=1
-    # Root motion should carry skeleton roots as well as IK goals.
-    for b in members('bones')+[n for n in members('controls') if prop(n,'LXRole')=='BodyCenter']:
-        if b.parent is None:
-            tm=rt.copy(b.transform);b.parent=root;b.transform=tm
-    return {'message':'世界中心 Root 就绪，创建 %d 个控制器'%count,'root':H.handle(root)}
+        info=target_scale(target,sizes);key=group_key(info)
+        groups.setdefault(key,{'info':info,'targets':[]})['targets'].append(target)
+    count=0;roots=[];created=[]
+    for key,group in groups.items():
+        info=group['info'];height=info['height']
+        candidates=[n for n in members('controls') if prop(n,'LXRole')=='Root' and
+                    (prop(n,'LXControlGroup')==key or H.handle(n) in sizes and group_key(sizes[H.handle(n)])==key)]
+        root=candidates[0] if candidates else mark(rt.Point(name=rt.uniqueName('LX_Root'),pos=rt.Point3(0,0,0),box=True,cross=True),'controls','Root')
+        rt.setUserProp(root,'LXControlGroup',key);control_display(root,height,multiplier);roots.append(H.handle(root))
+        for target in group['targets']:
+            if target==root or prop(target,'LXControl') or prop(target,'LXRole')=='Controller':continue
+            ctrl=rt.Circle() if kind=='circle' else rt.Rectangle() if kind=='rectangle' else rt.Point(cross=True,box=True)
+            ctrl.name=rt.uniqueName(str(target.name)+'_CTRL');mark(ctrl,'controls','Controller')
+            rt.setUserProp(ctrl,'LXControlGroup',key);rt.setUserProp(ctrl,'LXRigId',prop(target,'LXRigId'))
+            control_display(ctrl,height,multiplier)
+            tm=rt.copy(target.transform);old=target.parent
+            # Display sizes are world units: do not inherit target scale twice.
+            unit_tm=rt.Matrix3(rt.normalize(tm.row1),rt.normalize(tm.row2),rt.normalize(tm.row3),tm.row4)
+            ctrl.parent=old if old else root;ctrl.transform=unit_tm
+            target.parent=ctrl;target.transform=tm
+            rt.setUserProp(target,'LXControl',H.handle(ctrl));created.append(H.handle(ctrl));count+=1
+        # Carry only roots from this skeleton, never all scene/workset bones.
+        for ref,node_info in sizes.items():
+            if group_key(node_info)!=key:continue
+            b=H.node(ref)
+            if b!=root and b.parent is None and (ref in info['bones'] or prop(b,'LXRole')=='BodyCenter'):
+                tm=rt.copy(b.transform);b.parent=root;b.transform=tm
+    return {'message':'已按各自骨架高度创建 %d 个控制器、%d 个独立 Root'%(count,len(roots)),
+            'root':roots[0],'roots':roots,'controls':created}
+
+
+@H.command('controls.resize',True)
+def resize_controls(p):
+    selected=[H.node(i) for i in p.get('nodes',[])]
+    targets=selected or [n for n in rt.objects if is_ik(n)]
+    if not targets:raise ValueError('请选择普通 Bone 骨架或关联控制器')
+    sizes=scale_context(targets)
+    groups={group_key(target_scale(n,sizes)) for n in targets}
+    control_mult=float(p.get('displayScale',1));ik_mult=float(p.get('ikScale',1))
+    rig_scale.display_size(1,control_mult);rig_scale.display_size(1,ik_mult);count=0
+    for n in rt.objects:
+        info=sizes.get(H.handle(n))
+        if not info or group_key(info) not in groups:continue
+        if is_ik(n):ik_display(n,info['height'],ik_mult);count+=1
+        elif prop(n,'LXRole') in ('Controller','Root'):
+            control_display(n,info['height'],control_mult);count+=1
+    return {'message':'已按当前骨架尺寸重新适配 %d 个 IK / LX 控制器；骨架变换不变'%count}
 
 @H.command('bind.auto',True)
 def auto_bind(p):

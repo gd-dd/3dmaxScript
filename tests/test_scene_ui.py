@@ -99,4 +99,29 @@ class SharedSceneTests(unittest.TestCase):
         self.assertEqual(role_label({'role':'L_UpperArm_02'}),'左 · 上臂 · 02')
         self.assertEqual(role_label({'role':'R_Clavicle'}),'右 · 肩 / 锁骨')
 
+    def test_child_parent_survives_reference_pick_and_extend_ignores_coordinates(self):
+        from unittest.mock import Mock
+        self.w.set_child_parent({'node':'hip','name':'Pelvis'})
+        self.w.call=Mock();self.w.capture_child_point('direction','vertex')
+        self.w.call.call_args.args[2]({'position':[30,40,50],'message':'vertices'})
+        self.assertEqual(self.w.child_direction.text(),'30, 40, 50')
+        self.assertEqual(self.w.child_parent,'hip')
+        self.w.child_start.setText('invalid unused value');self.w.child_length.setValue(7)
+        self.w.add_child(True)
+        action,params,callback=self.w.call.call_args.args
+        self.assertEqual(action,'bone.child');self.assertEqual(params['parent'],'hip')
+        self.assertEqual(params['length'],7);self.assertTrue(params['extend'])
+        self.assertNotIn('start',params);self.assertNotIn('direction',params)
+        callback({'node':'child','name':'NewBone'})
+        self.assertEqual(self.w.child_parent,'child')
+        self.w.load_scene(dict(self.data,scene='another'))
+        self.assertIsNone(self.w.child_parent);self.assertEqual(self.w.child_direction.text(),'')
+
+    def test_deleted_child_parent_can_fall_back_then_refresh_clears_it(self):
+        from unittest.mock import Mock
+        self.w.set_child_parent({'node':'deleted','name':'UndoneBone'})
+        self.w.choose_bone_nodes(['hip']);self.w.call=Mock();self.w.add_child(True)
+        self.assertEqual(self.w.call.call_args.args[1]['fallbackParent'],'hip')
+        self.w.load_scene(self.data);self.assertIsNone(self.w.child_parent)
+
 if __name__=='__main__':unittest.main()
