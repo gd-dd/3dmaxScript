@@ -17,15 +17,33 @@ def node(ref):
     if obj is None or not rt.isValidNode(obj):raise ValueError('对象已不存在，请刷新场景')
     return obj
 
+def position(obj):return obj.transform.row4
+
 def vec(p):return [float(p.x),float(p.y),float(p.z)]
 def matrix_rows(m):return [vec(m[i]) for i in range(4)]
 def matrix_value(rows):return rt.Matrix3(*[rt.Point3(*v) for v in rows])
 def cls(obj):return str(rt.classOf(obj))
 def arr(values):return rt.Array(*values)
 
+def is_biped(obj):return cls(obj).lower()=='biped_object'
+
+def node_category(obj):
+    # Biped is GeometryClass, but its body parts must never become mesh targets.
+    kind=cls(obj).lower()
+    if is_biped(obj):
+        controller=cls(obj.controller).lower()
+        return 'controls' if controller in ('vertical_horizontal_turn','footsteps') else 'bones'
+    tagged=str(rt.getUserProp(obj,'LXWorkflow') or '')
+    if tagged in ('models','bones','controls'):return tagged
+    if kind=='bonegeometry' or bool(getattr(obj,'isBone',False)):return 'bones'
+    superclass=rt.superClassOf(obj)
+    if superclass==rt.Helper or superclass==rt.Shape:return 'controls'
+    if superclass==rt.GeometryClass:return 'models'
+    return 'other'
+
 def mesh(p):
     obj=node(p['mesh'])
-    if rt.superClassOf(obj)!=rt.GeometryClass:raise ValueError('请选择几何模型')
+    if node_category(obj)!='models':raise ValueError('请选择几何模型，骨骼和控制器不能作为蒙皮模型')
     return obj
 
 def skin(obj,p):
@@ -133,7 +151,8 @@ def inspect_scene(p):
     if len(nodes)>10000:raise ValueError('场景对象超过 10000，请在简化场景中操作')
     result=[]
     for n in nodes:
-        result.append({'id':handle(n),'name':str(n.name),'class':cls(n),'parent':handle(n.parent) if n.parent else None,'position':vec(n.pos),'geometry':rt.superClassOf(n)==rt.GeometryClass and cls(n)!='BoneGeometry' and not bool(getattr(n,'isBone',False)),'bone':bool(getattr(n,'isBone',False)) or 'Bone' in cls(n) or rt.superClassOf(n)==rt.Helper,'hidden':bool(n.isHidden),'boxMode':bool(n.boxMode),'showLinks':bool(n.showLinks),'workflow':str(rt.getUserProp(n,'LXWorkflow') or ''),'role':str(rt.getUserProp(n,'LXRole') or ''),'rigId':str(rt.getUserProp(n,'LXRigId') or ''),'selected':bool(n.isSelected),'skins':[{'index':i,'name':str(m.name),'handle':handle(m)} for i,m in enumerate(n.modifiers) if cls(m)=='Skin']})
+        category=node_category(n)
+        result.append({'id':handle(n),'name':str(n.name),'class':cls(n),'parent':handle(n.parent) if n.parent else None,'position':vec(n.transform.row4),'category':category,'geometry':category=='models','bone':category=='bones','hidden':bool(n.isHidden),'boxMode':bool(n.boxMode),'showLinks':bool(n.showLinks),'workflow':str(rt.getUserProp(n,'LXWorkflow') or ''),'role':str(rt.getUserProp(n,'LXRole') or ''),'rigId':str(rt.getUserProp(n,'LXRigId') or ''),'selected':bool(n.isSelected),'skins':[{'index':i,'name':str(m.name),'handle':handle(m)} for i,m in enumerate(n.modifiers) if cls(m)=='Skin']})
     return {'scene':str(rt.LXRigSceneToken),'nodes':result,'capabilities':list(COMMANDS),'maxVersion':list(rt.maxVersion())[:3],'viewport':workflow_host.viewport_state()}
 
 @command('nodes.select')
@@ -162,7 +181,7 @@ def parent_bone(p):
     while cur is not None:
         if cur==obj:raise ValueError('父子关系会形成循环')
         cur=cur.parent
-    if 'Biped' in cls(obj) or 'CAT' in cls(obj):raise ValueError('Biped/CAT 层级由专用系统管理，不能按普通骨骼改写')
+    if is_biped(obj) or 'cat' in cls(obj).lower():raise ValueError('Biped/CAT 层级由专用系统管理，不能按普通骨骼改写')
     tm=rt.copy(obj.transform);obj.parent=parent;obj.transform=tm
     return {'message':'层级已更新，保留当前世界变换；动画重定向不在此操作范围内'}
 

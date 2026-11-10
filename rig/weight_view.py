@@ -7,6 +7,7 @@ _loaded=False
 _models=[]
 _refs=[]
 _bones=set()
+_geometry_cache={}
 
 def signature(meshes,bones,step,enabled):
     """Cheap invalidation probe: no SkinOps, mesh snapshots or redraw calls."""
@@ -27,7 +28,7 @@ def color(value):
 
 def clear():
     global _models,_refs
-    had_models=bool(_models);_models=[];_refs=[]
+    had_models=bool(_models);_models=[];_refs=[];_geometry_cache.clear()
     if _loaded:
         rt.LXWeightViewData=rt.Array()
         if had_models:rt.redrawViews()
@@ -41,12 +42,17 @@ def update(meshes,bones,enabled=True):
         for row in result:
             obj=H.node(row['mesh'])
             if not row['bound'] or obj.isHidden:continue
-            points,faces=H.geometry(obj)
-            if len(points)!=row['count']:continue
-            hidden=set(int(x)-1 for x in json.loads(str(rt.getUserProp(obj,'LXHiddenVertices') or '[]')))
-            models.append(H.arr([H.arr([rt.Point3(*p)*obj.objectTransform for p in points]),
-                                 H.arr([H.arr([i+1 for i in f]) for f in faces if not hidden.intersection(f)]),
-                                 H.arr([color(v) for v in row['values']])]))
+            hidden_raw=str(rt.getUserProp(obj,'LXHiddenVertices') or '[]')
+            stamp=(str(rt.LXRigSceneToken),str(rt.currentTime),str(obj.objectTransform),row['count'],hidden_raw)
+            cached=_geometry_cache.get(row['mesh'])
+            if cached is None or cached[0]!=stamp:
+                points,faces=H.geometry(obj)
+                if len(points)!=row['count']:continue
+                hidden=set(int(x)-1 for x in json.loads(hidden_raw))
+                cached=(stamp,H.arr([rt.Point3(*p)*obj.objectTransform for p in points]),
+                        H.arr([H.arr([i+1 for i in f]) for f in faces if not hidden.intersection(f)]))
+                _geometry_cache[row['mesh']]=cached
+            models.append(H.arr([cached[1],cached[2],H.arr([color(v) for v in row['values']])]))
             refs.append(row['mesh'])
     _models=models;_refs=refs;rt.LXWeightViewData=H.arr(models);rt.redrawViews()
     return result

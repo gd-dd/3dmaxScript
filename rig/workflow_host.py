@@ -16,7 +16,12 @@ def ids(bits):return [int(i) for i in rt.execute('fn LXBitIds b = b as array')(b
 def free_bone(b):
     b.setBoneEnable(True,rt.currentTime);b.boneAutoAlign=prop(b,'LXRole')!='Pelvis';b.boneFreezeLength=False;b.boneScaleType=rt.Name("scale")
 
-def endpoint(b):return b.objectTransform.row4+b.objectTransform.row1*float(b.length) if H.cls(b)=='BoneGeometry' else b.pos
+def endpoint(b):
+    if H.cls(b)=='BoneGeometry':return b.objectTransform.row4+b.objectTransform.row1*float(b.length)
+    if H.is_biped(b):
+        children=[n for n in b.children if H.is_biped(n) and H.node_category(n)=='bones']
+        if children:return sum((H.position(n) for n in children),rt.Point3(0,0,0))/len(children)
+    return H.position(b)
 
 def set_segment(b,a,z):
     delta=z-a;length=float(rt.length(delta))
@@ -31,21 +36,31 @@ def set_segment(b,a,z):
 def import_selected(p):
     selected=list(rt.selection)
     if not selected:raise ValueError('请先在 Max 选择模型、骨骼或控制器')
+    imported=0
     for n in selected:
         kind=p.get('category','auto')
-        if kind=='auto':kind='bones' if H.cls(n)=='BoneGeometry' or bool(getattr(n,'isBone',False)) else 'models' if rt.superClassOf(n)==rt.GeometryClass else 'controls'
-        mark(n,kind)
-    return {'message':'已纳入工作流 %d 个对象（不复制、不改变层级）'%len(selected)}
+        if kind=='auto':kind=H.node_category(n)
+        if kind=='other':continue
+        if H.is_biped(n):kind=H.node_category(n)
+        mark(n,kind);imported+=1
+    return {'message':'已纳入工作流 %d 个对象（不复制、不改变层级）'%imported}
 
 @H.command('workflow.visibility',True)
 def visibility(p):
-    nodes=members(p['category'])
-    for n in nodes:n.isHidden=not bool(p['visible'])
+    nodes=[H.node(ref) for ref in p['nodes']] if 'nodes' in p else members(p['category'])
+    if not nodes:raise ValueError('此类别没有对象，请先读取场景')
+    from . import weight_view
+    weight_view.clear()
+    if p['visible']:rt.unhide(H.arr(nodes))
+    else:rt.hide(H.arr(nodes))
+    if p['visible'] and any(n.isHidden for n in nodes):
+        raise ValueError('对象仍受隐藏图层或类别过滤限制，请先在 Max 解除对应显示限制')
+    rt.redrawViews()
     return {'message':'已%s %d 个对象'%('显示' if p['visible'] else '隐藏',len(nodes))}
 
 @H.command('workflow.boxes',True)
 def boxes(p):
-    nodes=members(p['category']);on=bool(p['enabled'])
+    nodes=[H.node(ref) for ref in p['nodes']] if 'nodes' in p else members(p['category']);on=bool(p['enabled'])
     for n in nodes:
         if on:
             if not prop(n,'LXPreviousDisplayByLayer'):rt.setUserProp(n,'LXPreviousDisplayByLayer','true' if n.displayByLayer else 'false')
@@ -119,7 +134,7 @@ def align_endpoint(p):
     b=H.node(p['node']);target=H.node(p['target'])
     if H.cls(b)!='BoneGeometry':raise ValueError('请选择 Bone 骨骼')
     if prop(b,'LXFinalized'):raise ValueError('骨骼已定型，请在添加 IK 前调整端点')
-    set_segment(b,target.pos if p['endpoint']=='start' else b.pos,target.pos if p['endpoint']=='end' else endpoint(b))
+    set_segment(b,H.position(target) if p['endpoint']=='start' else b.pos,H.position(target) if p['endpoint']=='end' else endpoint(b))
     return {'message':'骨骼端点已对齐；子对象世界位置保持'}
 
 def poly(obj):
@@ -153,6 +168,7 @@ def guide(p):
 def finalize(p):
     chosen=[H.node(i) for i in p.get('bones',[])] or members('bones')
     if not chosen:raise ValueError('请先导入或创建骨架')
+    if any(H.is_biped(n) for n in chosen):raise ValueError('Biped 自带原生骨架系统；此定型按钮仅用于普通 Bone')
     rigs={prop(n,'LXRigId') for n in chosen if prop(n,'LXRigId')}
     bones=[n for n in members('bones') if prop(n,'LXRigId') in rigs] if rigs else chosen
     if any(prop(n,'LXFinalized') for n in bones):raise ValueError('骨架已定型；如需返回调整，请使用 Max 撤销')
@@ -189,6 +205,8 @@ def finalize(p):
 
 @H.command('controls.create',True)
 def controls(p):
+    if any(H.is_biped(H.node(i)) for i in p.get('nodes',[])):
+        raise ValueError('Biped 使用原生控制器；不能用普通 Bone 控制器流程改写其层级')
     roots=[n for n in members('controls') if prop(n,'LXRole')=='Root']
     root=roots[0] if roots else mark(rt.Point(name=rt.uniqueName('LX_Root'),pos=rt.Point3(0,0,0),size=float(p.get('size',10)),box=True,cross=True),'controls','Root')
     targets=[H.node(i) for i in p.get('nodes',[])] or [n for n in members('controls') if prop(n,'LXRole')=='IK']
@@ -220,7 +238,7 @@ def auto_bind(p):
         existing=next((i for i,m in enumerate(obj.modifiers) if H.cls(m)=='Skin'),None)
         if existing is not None:p=dict(p,skin=existing)
     if not any(H.cls(m)=='Skin' for m in obj.modifiers):
-        bones=p.get('bones') or [H.handle(n) for n in members('bones')]
+        bones=p.get('bones') or [H.handle(n) for n in rt.objects if H.node_category(n)=='bones']
         H.bind(dict(p,bones=bones));p=dict(p,skin=0,skinHandle=None)
     s=H.skin(obj,p)
     requested=set(map(str,p.get('bones',[])))
@@ -232,7 +250,7 @@ def auto_bind(p):
     segments=[]
     for b in data['bones']:
         if requested and b['node'] not in requested:continue
-        bone=H.node(b['node']);segments.append((b['id'],H.vec(bone.pos),H.vec(endpoint(bone))))
+        bone=H.node(b['node']);segments.append((b['id'],H.vec(H.position(bone)),H.vec(endpoint(bone))))
     rows,stats=binding.solve(points,data['faces'],segments,p.get('method','segment'),int(p.get('limit',4)),float(p.get('falloff',2)),int(p.get('resolution',32)))
     H.backup(data,'自动蒙皮前');s.bone_Limit=int(p.get('limit',4));H.write_rows(s,rows)
     return {'message':'自动蒙皮完成：%d 顶点 / %s'%(len(rows),'体素内部距离场' if p.get('method')=='voxel' else '骨骼线段距离'),'stats':stats}

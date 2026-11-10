@@ -3,6 +3,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget,QBoxLayout,QFormLayout,QSizePolicy,QHeaderView
 
 def role_label(node):
+    if str(node.get('class','')).lower()=='biped_object':
+        return 'Biped 骨骼' if node.get('category')=='bones' else 'Biped 控制器'
     role=node.get('role','');side=''
     if role.startswith(('L_','R_')):side='左 · ' if role[0]=='L' else '右 · ';role=role[2:]
     part=role.split('_')[0]

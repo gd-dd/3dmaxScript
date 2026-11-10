@@ -63,6 +63,9 @@ class SharedSceneTests(unittest.TestCase):
         self.w.show();self.app.processEvents()
         with patch.dict(sys.modules,{'rig.weight_view':view,'rig.max_host':host}),patch('rig.weight_view',view,create=True),patch('rig.max_host',host,create=True):
             self.w.invalidate_preview()
+            self.w.refresh_weight_view()
+            self.assertEqual(view.update.call_count,0)
+            self.w.steps.setCurrentIndex(6)
             for _ in range(20):self.w.refresh_weight_view()
             self.assertEqual(view.update.call_count,1)
             self.w.owner._preview_resizing=True;self.w.invalidate_preview();self.w.refresh_weight_view()
@@ -70,6 +73,28 @@ class SharedSceneTests(unittest.TestCase):
             self.w.owner._preview_resizing=False;self.w.refresh_weight_view()
             self.assertEqual(view.update.call_count,2)
         self.w.close()
+    def test_visibility_includes_unimported_listed_objects(self):
+        from unittest.mock import Mock
+        self.w.nodes[2]['workflow']=''
+        self.w.call=Mock()
+        button=Mock()
+        self.w.visibility('models',False,button,'模型')
+        args=self.w.call.call_args.args
+        self.assertEqual(set(args[1]['nodes']),{'mesh1','mesh2'})
+        args[2]({})
+        self.assertTrue(self.w.nodes[2]['hidden'])
+    def test_existing_biped_and_unmarked_models_are_visible_by_default(self):
+        data={'scene':'scene','nodes':self.data['nodes']+[
+            dict(node('bip','Bip001 Pelvis','','',None),category='bones',geometry=False,bone=True,**{'class':'Biped_Object'}),
+            dict(node('com','Bip001','','',None),category='controls',geometry=False,bone=False,**{'class':'Biped_Object'}),
+            dict(node('existing','Old Mesh','models'),workflow='')]}
+        self.w.load_scene(data)
+        self.assertFalse(self.w.workflow_only.isChecked())
+        from rig.selection_ui import items
+        for key,ref in [('models','existing'),('bones','bip'),('controls','com')]:
+            item=next(i for i in items(self.w.category_trees[key]) if i.data(0,Qt.ItemDataRole.UserRole)==ref)
+            self.assertFalse(item.isHidden())
+        self.assertNotIn('bip',[self.w.mesh.itemData(i) for i in range(self.w.mesh.count())])
     def test_role_labels_distinguish_sides_and_chain_links(self):
         self.assertEqual(role_label({'role':'L_UpperArm_02'}),'左 · 上臂 · 02')
         self.assertEqual(role_label({'role':'R_Clavicle'}),'右 · 肩 / 锁骨')

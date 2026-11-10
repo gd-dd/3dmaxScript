@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QTreeWidget,QTreeWidgetItem,QHeaderView,QAbstractI
 from .scene_ui import role_label,prepare_tree
 
 def category(node):
-    return node.get('workflow') or ('bones' if node.get('bone') and node.get('class') not in ('Point','Dummy') else 'models' if node.get('geometry') else 'controls')
+    return node.get('category') or node.get('workflow') or ('bones' if node.get('bone') and node.get('class') not in ('Point','Dummy') else 'models' if node.get('geometry') else 'controls')
 
 def ids(tree):return [i.data(0,Qt.ItemDataRole.UserRole) for i in tree.selectedItems()]
 
@@ -51,6 +51,9 @@ class SelectionMixin:
 
     def call(self,action,params=None,callback=None):
         def done(data):
+            if hasattr(self.owner,'scene_token'):
+                from . import batch_host,weight_view
+                batch_host._read_cache.clear();weight_view._geometry_cache.clear()
             self.invalidate_preview()
             if callback:callback(data)
         return super().call(action,params,done)
@@ -111,6 +114,9 @@ class SelectionMixin:
         if self.busy or getattr(self,'_preview_running',False) or getattr(self.owner,'_preview_resizing',False) or not self.scene or not hasattr(self,'color_view') or not self.isVisible():return
         from . import weight_view,max_host as H
         if H.rt.theHold.Holding():return
+        if self.steps.currentIndex()!=6:
+            weight_view.clear()
+            return
         self._preview_running=True
         enabled=self.color_view.isChecked() and self.steps.currentIndex()==6
         signature=None

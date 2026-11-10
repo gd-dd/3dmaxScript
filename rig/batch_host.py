@@ -24,10 +24,10 @@ def get_skin(obj):
 def suggest(p):
     obj=H.mesh(p);points,_=H.geometry(obj)
     points=[H.vec(rt.Point3(*v)*obj.objectTransform) for v in points]
-    pool=[H.node(x) for x in p.get('pool',[])] or F.members('bones')
+    pool=[H.node(x) for x in p.get('pool',[])] or [n for n in rt.objects if H.node_category(n)=='bones']
     pool=[n for n in pool if n!=obj and not F.prop(n,'LXRole').endswith('_End')]
     if not pool:raise ValueError('请先将骨骼导入骨骼栏')
-    segments=[(H.handle(n),H.vec(n.pos),H.vec(F.endpoint(n))) for n in pool]
+    segments=[(H.handle(n),H.vec(H.position(n)),H.vec(F.endpoint(n))) for n in pool]
     votes={};sample=points[::max(1,len(points)//512)];limit=max(1,int(p.get('limit',4)))
     for point in sample:
         ranked=sorted((binding.segment_distance(point,a,b),key) for key,a,b in segments)
@@ -65,7 +65,7 @@ def restrict(p):
             values={k:v for k,v in row.items() if k in allowed and v>0};total=sum(values.values())
             if total<=1e-8:
                 world=H.vec(rt.Point3(*point)*obj.objectTransform)
-                nearest=min(chosen,key=lambda b:binding.segment_distance(world,H.vec(H.node(b['node']).pos),H.vec(F.endpoint(H.node(b['node'])))))
+                nearest=min(chosen,key=lambda b:binding.segment_distance(world,H.vec(H.position(H.node(b['node']))),H.vec(F.endpoint(H.node(b['node'])))))
                 values={nearest['id']:1};total=1
             out.append({k:v/total for k,v in values.items()})
         pending.append((obj,s,data,out))
@@ -85,7 +85,8 @@ def inspect_weights(meshes,bones):
         if s is None:
             results.append({'mesh':ref,'name':str(obj.name),'bound':False});continue
         from . import brush
-        key=(str(rt.LXRigSceneToken),ref,H.handle(s))
+        revision=str(s.lxWeightRevision) if rt.isProperty(s,'lxWeightRevision') else ''
+        key=(str(rt.LXRigSceneToken),ref,H.handle(s),revision)
         if brush._active is not None:
             if brush._active.obj==obj:
                 influences=H.influences(s);rows=H.read_rows(s)
@@ -93,6 +94,8 @@ def inspect_weights(meshes,bones):
                 _read_cache[key]=(influences,rows,selected)
             elif key in _read_cache:influences,rows,selected=_read_cache[key]
             else:continue
+        elif key in _read_cache:
+            influences,rows,selected=_read_cache[key]
         else:
             with read_context(obj,s):
                 influences=H.influences(s);rows=H.read_rows(s)
@@ -101,7 +104,10 @@ def inspect_weights(meshes,bones):
         ids={b['id'] for b in influences if b['node'] in chosen}
         values=[sum(r.get(k,0) for k in ids) for r in rows]
         if not selected:selected=list(range(len(rows)))
-        per_bone={b['node']:sum(rows[i].get(b['id'],0) for i in selected)/max(1,len(selected)) for b in influences}
+        totals={}
+        for i in selected:
+            for key,value in rows[i].items():totals[key]=totals.get(key,0)+value
+        per_bone={b['node']:totals.get(b['id'],0)/max(1,len(selected)) for b in influences}
         results.append({'mesh':ref,'name':str(obj.name),'bound':True,'count':len(rows),'values':values,
                         'mean':sum(values[i] for i in selected)/max(1,len(selected)),
                         'bones':per_bone,'vertices':[(i+1,values[i]) for i in selected[:200]],'sampleCount':len(selected)})

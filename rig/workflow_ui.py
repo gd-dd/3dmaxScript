@@ -16,11 +16,11 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         for title,category in [('模型','models'),('骨骼','bones'),('控制器','controls')]:
             button=QPushButton(title+' 显示');button.setCheckable(True);button.setChecked(True)
             button.toggled.connect(lambda visible,c=category,b=button,t=title:self.guard(lambda:self.visibility(c,visible,b,t)));bar.addWidget(button);self.visibility_buttons[category]=(button,title)
-            box=QPushButton('包围框');box.setCheckable(True);box.setToolTip(title+'类别的包围框显示，不影响其他类别');box.toggled.connect(lambda on,c=category:self.guard(lambda:self.call('workflow.boxes',{'category':c,'enabled':on})));bar.addWidget(box);self.box_buttons[category]=box
+            box=QPushButton('包围框');box.setCheckable(True);box.setToolTip(title+'类别的包围框显示，不影响其他类别');box.toggled.connect(lambda on,c=category:self.guard(lambda:self.call('workflow.boxes',{'category':c,'enabled':on,'nodes':self.category_nodes(c)})));bar.addWidget(box);self.box_buttons[category]=box
         self.steps=QComboBox();self.steps.setObjectName('WorkflowSteps');layout.insertWidget(2,self.steps)
         self.steps.currentIndexChanged.connect(self.change_step);self.tabs.tabBar().hide()
         one=self.page('01  导入与整理')
-        intro=QLabel('在视口选中模型、骨骼、控制器，再加入当前工作流。\n不复制场景对象，不改变原有层级。');intro.setWordWrap(True);one.addRow(intro)
+        intro=QLabel('读取场景即可使用已有模型、Bone、Biped 和控制器。\n可选：将视口选择加入工作集，便于单独筛选；不复制对象。');intro.setWordWrap(True);one.addRow(intro)
         self.import_type=QComboBox()
         for label,key in [('自动分类','auto'),('模型','models'),('骨骼','bones'),('控制器 / 辅助体','controls')]:self.import_type.addItem(label,key)
         one.addRow('导入类别',self.import_type)
@@ -139,7 +139,7 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         title=QLabel('场景工作集 · 全流程共用');title.setStyleSheet('font-size:14px;font-weight:600;color:#507522');left.addWidget(title)
         self.layout().removeWidget(self.refresh);left.addWidget(self.refresh)
         self.scene_search=QLineEdit();self.scene_search.setPlaceholderText('搜索名称、肩、骨盆、左 / 右…');left.addWidget(self.scene_search)
-        self.workflow_only=QCheckBox('仅显示已导入 / 本工具生成的对象');self.workflow_only.setChecked(True);left.addWidget(self.workflow_only)
+        self.workflow_only=QCheckBox('仅显示已导入 / 本工具生成的对象');self.workflow_only.setChecked(False);left.addWidget(self.workflow_only)
         self.build_categories(left)
         row=QHBoxLayout()
         for label,fn in [('展开',lambda:[t.expandAll() for t in self.category_trees.values()]),('折叠',lambda:[t.collapseAll() for t in self.category_trees.values()]),('选中到 Max',lambda:self.call('nodes.select',{'nodes':self.selected()}))]:
@@ -173,8 +173,19 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         from .scene_ui import filter_tree
         filter_tree(self.tree,self.nodes,self.scene_search.text(),self.workflow_only.isChecked());self.filter_categories()
     def change_step(self,index):self.tabs.setCurrentIndex(index);self.invalidate_preview()
+    def category_nodes(self,kind):
+        from .selection_ui import category
+        return [n['id'] for n in self.nodes if category(n)==kind]
     def visibility(self,category,visible,button,title):
-        button.setText(title+(' 显示' if visible else ' 隐藏'));self.call('workflow.visibility',{'category':category,'visible':visible})
+        from .selection_ui import category as node_category
+        nodes=[n['id'] for n in self.nodes if node_category(n)==category]
+        button.blockSignals(True);button.setChecked(not visible);button.blockSignals(False)
+        def done(data):
+            button.blockSignals(True);button.setChecked(visible);button.blockSignals(False)
+            button.setText(title+(' 显示' if visible else ' 隐藏'))
+            for n in self.nodes:
+                if n['id'] in nodes:n['hidden']=not visible
+        self.call('workflow.visibility',{'category':category,'visible':visible,'nodes':nodes},done)
     def humanoid_options(self):return dict(height=self.rig_height.value(),prefix=self.rig_prefix.text(),**{k:v.value() for k,v in self.chain_counts.items()})
     def align(self,endpoint):self.mutate('bone.align',{'node':self.one(),'target':self.align_target.currentData(),'endpoint':endpoint})
     def multi(self,mode):
@@ -191,12 +202,13 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
                 if self.skin.itemData(i,Qt.ItemDataRole.UserRole+1)==previous_skin:self.skin.setCurrentIndex(i);break
         if hasattr(self,'context_summary'):
             from .scene_ui import decorate_tree
+            from .selection_ui import category as node_category
             decorate_tree(self.tree,self.nodes);self.filter_scene_tree()
-            self.context_summary.setText('共用工作集：%d 模型 · %d 骨骼 · %d 控制器'%tuple(sum(n.get('workflow')==c for n in self.nodes) for c in ('models','bones','controls')))
+            self.context_summary.setText('共用工作集：%d 模型 · %d 骨骼 · %d 控制器'%tuple(sum(node_category(n)==c for n in self.nodes) for c in ('models','bones','controls')))
         if not hasattr(self,'roster'):return
         self.roster.clear();previous=self.align_target.currentData();self.align_target.clear();self.load_viewport(data.get('viewport',{}))
         for category,(button,title) in self.visibility_buttons.items():
-            group=[n for n in self.nodes if n.get('workflow')==category];visible=not group or any(not n.get('hidden') for n in group)
+            group=[n for n in self.nodes if n['id'] in self.category_nodes(category)];visible=not group or any(not n.get('hidden') for n in group)
             button.blockSignals(True);button.setChecked(visible);button.setText(title+(' 显示' if visible else ' 隐藏'));button.blockSignals(False)
             box=self.box_buttons[category];box.blockSignals(True);box.setChecked(bool(group) and all(n.get('boxMode') for n in group));box.blockSignals(False)
         bones=[n for n in self.nodes if n.get('workflow')=='bones']
