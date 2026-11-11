@@ -10,19 +10,21 @@ try(destroyDialog ReparentBakeRollout)catch()
 
 rollout ReparentBakeRollout "保持位移建立父子" width:420
 (
-    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+    dotNetControl lxHeader "System.Windows.Forms.Panel" pos:[14,12] width:392 height:64
 
-    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  子物体"
-        pickbutton btnPickChild "选择子物体" width:376 height:28 autoDisplay:true
-        dotNetControl lblChildInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
-    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  父物体"
-        pickbutton btnPickParent "选择父物体" width:376 height:28 autoDisplay:true
-        dotNetControl lblParentInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
-    dotNetControl lxSection3 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"03  帧范围"
-        spinner spnStart "起始帧:" range:[-9999,99999,0] type:#integer width:120
-        spinner spnEnd   "结束帧:" range:[-9999,99999,100] type:#integer width:120
-        dotNetControl btnGetRange "System.Windows.Forms.Button" width:376 height:30 align:#center
-    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
+    dotNetControl lxSection1 "System.Windows.Forms.Label" Text:"01  子物体" pos:[14,88] width:392 height:26
+        pickbutton btnPickChild "选择子物体" autoDisplay:true pos:[22,122] width:376 height:28
+        dotNetControl lblChildInfo "System.Windows.Forms.Label" Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter) pos:[22,156] width:376 height:34
+    dotNetControl lxSection2 "System.Windows.Forms.Label" Text:"02  父物体" pos:[14,198] width:392 height:26
+        pickbutton btnPickParent "选择父物体" autoDisplay:true pos:[22,232] width:376 height:28
+        dotNetControl lblParentInfo "System.Windows.Forms.Label" Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter) pos:[22,266] width:376 height:34
+    dotNetControl lxSection3 "System.Windows.Forms.Label" Text:"03  帧范围" pos:[14,308] width:392 height:26
+        dotNetControl spnStartLabel "System.Windows.Forms.Label" Text:"开始" pos:[22,346] width:36 height:20
+        spinner spnStart "" range:[-9999,99999,0] type:#integer pos:[62,344] width:120 height:20
+        dotNetControl spnEndLabel "System.Windows.Forms.Label" Text:"结束" pos:[220,346] width:36 height:20
+        spinner spnEnd   "" range:[-9999,99999,100] type:#integer pos:[260,344] width:138 height:20
+        dotNetControl btnGetRange "System.Windows.Forms.Button" pos:[22,376] width:160 height:30
+    dotNetControl btnExecute "System.Windows.Forms.Button" pos:[198,374] width:200 height:36
 
     local childNode  = undefined
     local parentNode = undefined
@@ -40,6 +42,8 @@ rollout ReparentBakeRollout "保持位移建立父子" width:420
     )
     on ReparentBakeRollout open do
     (
+        LXLegacyText spnStartLabel
+        LXLegacyText spnEndLabel
         LXLegacySection lxSection1
         LXLegacySection lxSection2
         LXLegacySection lxSection3
@@ -139,7 +143,7 @@ rollout ReparentBakeRollout "保持位移建立父子" width:420
 
 )
 
-createDialog ReparentBakeRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
+createDialog ReparentBakeRollout width:420 height:424 bgcolor:(color 248 250 245) fgcolor:(color 48 61 42) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "保持位移建立父子关系工具已加载。\n"
 

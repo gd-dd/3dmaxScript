@@ -1,6 +1,144 @@
 """Shared scene navigation and forms that adapt to a wide floating window."""
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget,QBoxLayout,QFormLayout,QSizePolicy,QHeaderView
+from PySide6.QtCore import Qt,QSize,QRect
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import (QWidget,QBoxLayout,QFormLayout,QSizePolicy,QHeaderView,
+    QPushButton,QGridLayout,QVBoxLayout,QHBoxLayout,QLabel,QScrollArea,QFrame,
+    QStackedWidget,QStylePainter,QStyleOptionButton,QStyle,QCheckBox)
+
+
+class WrapButton(QPushButton):
+    """Keep the full action name readable at narrow panel widths."""
+    def __init__(self,text,parent=None):
+        super().__init__(text,parent);self.setToolTip(text)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred,QSizePolicy.Policy.Preferred)
+        policy=self.sizePolicy();policy.setHeightForWidth(True);self.setSizePolicy(policy)
+    def hasHeightForWidth(self):return True
+    def heightForWidth(self,width):
+        rect=self.fontMetrics().boundingRect(QRect(0,0,max(20,width-28),10000),int(Qt.TextFlag.TextWordWrap|Qt.AlignmentFlag.AlignCenter),self.text())
+        return max(34,rect.height()+20)
+    def sizeHint(self):return QSize(180,self.heightForWidth(180))
+    def minimumSizeHint(self):return QSize(72,self.heightForWidth(100))
+    def paintEvent(self,event):
+        option=QStyleOptionButton();self.initStyleOption(option);option.text=''
+        painter=QStylePainter(self);painter.drawControl(QStyle.ControlElement.CE_PushButton,option)
+        rect=self.style().subElementRect(QStyle.SubElement.SE_PushButtonContents,option,self)
+        group=QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
+        painter.setPen(self.palette().color(group,QPalette.ColorRole.ButtonText))
+        painter.drawText(rect.adjusted(4,2,-4,-2),int(Qt.TextFlag.TextWordWrap|Qt.AlignmentFlag.AlignCenter),self.text())
+
+
+class ActionRow(QWidget):
+    def __init__(self,items,guard,parent=None):
+        super().__init__(parent);self.grid=QGridLayout(self);self.grid.setContentsMargins(0,0,0,0)
+        self.buttons=[];self.columns=0
+        policy=self.sizePolicy();policy.setHeightForWidth(True);self.setSizePolicy(policy)
+        for title,callback in items:
+            button=WrapButton(title);button.clicked.connect(lambda checked=False,f=callback:guard(f));self.buttons.append(button)
+        self.arrange(1)
+    def arrange(self,columns):
+        if columns==self.columns:return
+        self.columns=columns
+        for button in self.buttons:self.grid.removeWidget(button)
+        for i,button in enumerate(self.buttons):self.grid.addWidget(button,i//columns,i%columns)
+        self.grid.invalidate();self.updateGeometry()
+    def heightForWidth(self,width):
+        columns=2 if width>=360 else 1;gap=self.grid.verticalSpacing()
+        button_width=max(20,(width-self.grid.horizontalSpacing()*(columns-1))//columns)
+        heights=[max(b.heightForWidth(button_width) for b in self.buttons[i:i+columns]) for i in range(0,len(self.buttons),columns)]
+        return sum(heights)+max(0,len(heights)-1)*gap
+    def minimumSizeHint(self):return QSize(72,0)
+    def sizeHint(self):return QSize(360,self.heightForWidth(360))
+    def resizeEvent(self,event):
+        self.arrange(2 if self.width()>=360 else 1)
+        height=self.heightForWidth(self.width())
+        if self.minimumHeight()!=height:self.setMinimumHeight(height);self.updateGeometry()
+        super().resizeEvent(event)
+
+
+class WrapCheckBox(QCheckBox):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        policy=self.sizePolicy();policy.setHeightForWidth(True);self.setSizePolicy(policy)
+    def hasHeightForWidth(self):return True
+    def heightForWidth(self,width):
+        rect=self.fontMetrics().boundingRect(QRect(0,0,max(20,width-38),10000),int(Qt.TextFlag.TextWordWrap),self.text())
+        return max(28,rect.height()+12)
+    def sizeHint(self):return QSize(220,self.heightForWidth(220))
+    def minimumSizeHint(self):return QSize(72,self.heightForWidth(100))
+    def paintEvent(self,event):
+        option=QStyleOptionButton();self.initStyleOption(option);option.text=''
+        painter=QStylePainter(self);painter.drawControl(QStyle.ControlElement.CE_CheckBox,option)
+        rect=self.style().subElementRect(QStyle.SubElement.SE_CheckBoxContents,option,self)
+        group=QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
+        painter.setPen(self.palette().color(group,QPalette.ColorRole.WindowText))
+        painter.drawText(rect,int(Qt.TextFlag.TextWordWrap|Qt.AlignmentFlag.AlignVCenter),self.text())
+    def hitButton(self,point):return self.rect().contains(point)
+
+
+class WrapLabel(QLabel):
+    """Long scene identifiers wrap as well as Chinese prose, without widening a page."""
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs);self.setWordWrap(True)
+        policy=self.sizePolicy();policy.setHeightForWidth(True);self.setSizePolicy(policy)
+    def minimumSizeHint(self):return QSize(0,self.fontMetrics().height())
+    def sizeHint(self):return QSize(280,self.heightForWidth(280))
+    def heightForWidth(self,width):
+        flags=int(Qt.TextFlag.TextWordWrap|Qt.TextFlag.TextWrapAnywhere)
+        return self.fontMetrics().boundingRect(QRect(0,0,max(20,width),10000),flags,self.text()).height()+4
+    def paintEvent(self,event):
+        painter=QStylePainter(self);painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
+        painter.drawText(self.contentsRect(),int(Qt.TextFlag.TextWordWrap|Qt.TextFlag.TextWrapAnywhere|Qt.AlignmentFlag.AlignVCenter),self.text())
+
+
+def take_rows(form):
+    rows=[]
+    while form.rowCount():
+        row=form.takeRow(0)
+        def value(item):return (item.widget() or item.layout()) if item else None
+        rows.append((value(row.labelItem),value(row.fieldItem)))
+    return rows
+
+
+def add_rows(form,rows):
+    for label,field in rows:
+        if label is not None:form.addRow(label,field)
+        elif field is not None:form.addRow(field)
+
+
+def scroll_form(rows=()):
+    scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setMinimumSize(0,0);scroll.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Expanding)
+    widget=QWidget();form=QFormLayout(widget);form.setContentsMargins(4,4,10,8)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+    add_rows(form,rows);scroll.setWidget(widget)
+    return scroll,form
+
+
+class WorkspaceStack(QStackedWidget):
+    def minimumSizeHint(self):return QSize(0,0)
+    def sizeHint(self):return QSize(400,400)
+
+
+class SectionNavigator(QWidget):
+    """In-panel task pages. Reparent existing fields; retain drafts/signals."""
+    def __init__(self,rows=(),parent=None):
+        super().__init__(parent);layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0)
+        self.stack=WorkspaceStack();layout.addWidget(self.stack)
+        self.overview,self.overview_form=scroll_form(rows);self.stack.addWidget(self.overview)
+        self.details={};self.detail_buttons={}
+    def add_detail(self,title,rows):
+        page=QWidget();layout=QVBoxLayout(page);layout.setContentsMargins(0,0,0,0)
+        bar=QHBoxLayout();back=WrapButton('‹ 返回当前步骤');back.setObjectName('detailBack');back.clicked.connect(self.back)
+        label=QLabel(title);label.setWordWrap(True);bar.addWidget(back);bar.addWidget(label,1);layout.addLayout(bar)
+        scroll,form=scroll_form(rows);layout.addWidget(scroll,1)
+        self.stack.addWidget(page);self.details[title]=page
+        button=WrapButton(title+' ›');button.setObjectName('detailLink');button.clicked.connect(lambda:self.open_detail(title))
+        self.detail_buttons[title]=button;self.overview_form.addRow(button)
+        return form
+    def open_detail(self,title):self.stack.setCurrentWidget(self.details[title])
+    def back(self):self.stack.setCurrentIndex(0)
 
 def role_label(node):
     if str(node.get('class','')).lower()=='biped_object':

@@ -10,24 +10,27 @@ try(destroyDialog AnimBakeRollout)catch()
 
 rollout AnimBakeRollout "动画烘焙工具" width:420
 (
-    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+    dotNetControl lxHeader "System.Windows.Forms.Panel" pos:[14,12] width:392 height:64
 
     ----------------------------------------------------------------------------
     --  UI
     ----------------------------------------------------------------------------
-    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  目标对象"
-        dotNetControl btnGetObjs "System.Windows.Forms.Button" width:376 height:30 align:#center
-        dotNetControl lblObjInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未获取对象" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
-    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  烘焙通道"
-        dotNetControl chkPos "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"位移 (Position)" Checked:true
-        dotNetControl chkRot "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"旋转 (Rotation)" Checked:true
-        dotNetControl chkScale "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"缩放 (Scale)" Checked:true
-    dotNetControl lxSection3 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"03  帧范围"
-        spinner spnStart "起始帧:" range:[-9999,99999,0] type:#integer width:120
-        spinner spnEnd   "结束帧:" range:[-9999,99999,100] type:#integer width:120
-        spinner spnStep  "采样间隔:" range:[1,100,1] type:#integer width:120
-        dotNetControl btnGetRange "System.Windows.Forms.Button" width:376 height:30 align:#center
-    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
+    dotNetControl lxSection1 "System.Windows.Forms.Label" Text:"01  目标对象" pos:[14,88] width:392 height:26
+        dotNetControl btnGetObjs "System.Windows.Forms.Button" pos:[22,122] width:376 height:30
+        dotNetControl lblObjInfo "System.Windows.Forms.Label" Text:"未获取对象" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter) pos:[22,158] width:376 height:34
+    dotNetControl lxSection2 "System.Windows.Forms.Label" Text:"02  烘焙通道" pos:[14,200] width:392 height:26
+        dotNetControl chkPos "System.Windows.Forms.CheckBox" Text:"位移 (Position)" Checked:true pos:[22,232] width:120 height:26
+        dotNetControl chkRot "System.Windows.Forms.CheckBox" Text:"旋转 (Rotation)" Checked:true pos:[150,232] width:120 height:26
+        dotNetControl chkScale "System.Windows.Forms.CheckBox" Text:"缩放 (Scale)" Checked:true pos:[278,232] width:120 height:26
+    dotNetControl lxSection3 "System.Windows.Forms.Label" Text:"03  帧范围" pos:[14,268] width:392 height:26
+        dotNetControl spnStartLabel "System.Windows.Forms.Label" Text:"开始" pos:[22,304] width:36 height:20
+        spinner spnStart "" range:[-9999,99999,0] type:#integer pos:[62,302] width:78 height:20
+        dotNetControl spnEndLabel "System.Windows.Forms.Label" Text:"结束" pos:[150,304] width:36 height:20
+        spinner spnEnd   "" range:[-9999,99999,100] type:#integer pos:[190,302] width:78 height:20
+        dotNetControl spnStepLabel "System.Windows.Forms.Label" Text:"间隔" pos:[278,304] width:36 height:20
+        spinner spnStep  "" range:[1,100,1] type:#integer pos:[318,302] width:80 height:20
+        dotNetControl btnGetRange "System.Windows.Forms.Button" pos:[22,332] width:160 height:30
+    dotNetControl btnExecute "System.Windows.Forms.Button" pos:[198,330] width:200 height:36
 
     local bakeObjs = #()
 
@@ -37,6 +40,9 @@ rollout AnimBakeRollout "动画烘焙工具" width:420
     ----------------------------------------------------------------------------
     on AnimBakeRollout open do
     (
+        LXLegacyText spnStartLabel
+        LXLegacyText spnEndLabel
+        LXLegacyText spnStepLabel
         LXLegacySection lxSection1
         LXLegacySection lxSection2
         LXLegacySection lxSection3
@@ -153,7 +159,7 @@ rollout AnimBakeRollout "动画烘焙工具" width:420
 
 )
 
-createDialog AnimBakeRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
+createDialog AnimBakeRollout width:420 height:384 bgcolor:(color 248 250 245) fgcolor:(color 48 61 42) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "动画烘焙工具已加载。\n"
 

@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt,QTimer
 from PySide6.QtWidgets import QTreeWidget,QTreeWidgetItem,QHeaderView,QAbstractItemView,QSplitter,QWidget,QVBoxLayout,QLabel,QPushButton,QFrame,QTabWidget
 from .scene_ui import role_label,prepare_tree
+from .scene_ui import WrapLabel as QLabel
 
 def category(node):
     return node.get('category') or node.get('workflow') or ('bones' if node.get('bone') and node.get('class') not in ('Point','Dummy') else 'models' if node.get('geometry') else 'controls')
@@ -32,6 +33,10 @@ class SelectionMixin:
             tree=QTreeWidget();prepare_tree(tree);tree.setMinimumHeight(65);tree.setFrameShape(QFrame.Shape.NoFrame)
             tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             tree.setHeaderLabels(['名称 / 层级','部位','影响值']);tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
+            tree.header().setStretchLastSection(False)
+            tree.header().setSectionResizeMode(1,QHeaderView.ResizeMode.Interactive);tree.setColumnWidth(1,65)
+            tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.Interactive);tree.setColumnWidth(2,60)
+            tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
             self.category_trees[key]=tree
             if key=='models':
                 box=QWidget();v=QVBoxLayout(box);v.setContentsMargins(0,4,0,0);v.addWidget(QLabel(title));v.addWidget(tree)
@@ -40,7 +45,7 @@ class SelectionMixin:
             tree.itemSelectionChanged.connect(lambda c=key:self.category_changed(c))
         self.category_split.addWidget(self.role_tabs);self.category_split.setSizes([180,300])
         frame_layout.addWidget(self.category_split);layout.addWidget(self.object_frame,1)
-        self.influence_button=QPushButton('选出所选模型的影响骨骼');self.influence_button.clicked.connect(lambda:self.guard(self.select_model_influences));layout.addWidget(self.influence_button)
+        self.influence_button=QPushButton('选出影响骨骼');self.influence_button.setToolTip('在骨骼栏选中所选模型的全部 Skin 影响骨骼');self.influence_button.clicked.connect(lambda:self.guard(self.select_model_influences));layout.addWidget(self.influence_button)
         self.weight_summary=QLabel('模型选择与骨骼选择互不覆盖。');self.weight_summary.setWordWrap(True);layout.addWidget(self.weight_summary)
         self._preview_dirty=True;self._preview_signature=None
         self._bind_queue=[];self._bind_pool=[];self._bind_done=0;self._batch_auto=False;self._skin_bones={}
@@ -91,6 +96,7 @@ class SelectionMixin:
                 tree.blockSignals(True);tree.clear();nodes=[n for n in self.nodes if category(n)==key];lookup={}
                 for n in nodes:
                     i=QTreeWidgetItem([n['name'],role_label(n),'']);i.setData(0,Qt.ItemDataRole.UserRole,n['id']);lookup[n['id']]=i
+                    i.setToolTip(0,n['name']);i.setToolTip(1,role_label(n))
                 for n in nodes:
                     i=lookup[n['id']];parent=lookup.get(n['parent'])
                     if parent:parent.addChild(i)

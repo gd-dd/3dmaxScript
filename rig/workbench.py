@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,
     QPushButton,QComboBox,QLineEdit,QDoubleSpinBox,QSpinBox,QTabWidget,QTreeWidget,
     QTreeWidgetItem,QAbstractItemView,QCheckBox,QFileDialog,QScrollArea,QFrame,QHeaderView,QGridLayout)
+from .scene_ui import WrapCheckBox as QCheckBox,WrapLabel as QLabel
 
 
 class WheelSafeSpinBox(QSpinBox):
@@ -10,6 +11,17 @@ class WheelSafeSpinBox(QSpinBox):
 
 class WheelSafeDoubleSpinBox(QDoubleSpinBox):
     def wheelEvent(self,event):event.ignore()
+
+
+class WheelSafeComboBox(QComboBox):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs);self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    def wheelEvent(self,event):
+        if self.hasFocus():super().wheelEvent(event)
+        else:event.ignore()
+
+
+QComboBox=WheelSafeComboBox
 
 
 class RigWorkbench(QWidget):
@@ -76,12 +88,11 @@ class RigWorkbench(QWidget):
 
     def page(self,title):
         widget=QWidget();form=QFormLayout(widget);form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame);scroll.setWidget(widget);self.tabs.addTab(scroll,title);return form
     def actions(self,form,*items):
-        row=QGridLayout()
-        for index,(title,fn) in enumerate(items):
-            button=QPushButton(title);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button,index//2,index%2)
-        form.addRow(row)
+        from .scene_ui import ActionRow
+        form.addRow(ActionRow(items,self.guard))
     def guard(self,fn):
         try:fn()
         except Exception as e:self.notice.setText(str(e))

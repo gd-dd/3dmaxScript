@@ -1,8 +1,9 @@
 """Seven-stage Max workflow, with shared scene and visibility controls."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,QComboBox,QLineEdit,QTreeWidget,QTreeWidgetItem,QAbstractItemView,QTabWidget,QCheckBox,QSplitter,QSizePolicy,QScrollArea,QFrame
-from .workbench import RigWorkbench
+from .workbench import RigWorkbench,WheelSafeComboBox as QComboBox
 from .selection_ui import SelectionMixin
+from .scene_ui import WrapCheckBox as QCheckBox,WrapLabel as QLabel
 
 class WorkflowWorkbench(SelectionMixin,RigWorkbench):
     def __init__(self,owner):
@@ -16,7 +17,7 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         for title,category in [('模型','models'),('骨骼','bones'),('控制器','controls')]:
             button=QPushButton(title+' 显示');button.setCheckable(True);button.setChecked(True)
             button.toggled.connect(lambda visible,c=category,b=button,t=title:self.guard(lambda:self.visibility(c,visible,b,t)));bar.addWidget(button);self.visibility_buttons[category]=(button,title)
-            box=QPushButton('包围框');box.setCheckable(True);box.setToolTip(title+'类别的包围框显示，不影响其他类别');box.toggled.connect(lambda on,c=category:self.guard(lambda:self.call('workflow.boxes',{'category':c,'enabled':on,'nodes':self.category_nodes(c)})));bar.addWidget(box);self.box_buttons[category]=box
+            box=QPushButton(title+'包围框');box.setCheckable(True);box.setToolTip(title+'类别的包围框显示，不影响其他类别');box.toggled.connect(lambda on,c=category:self.guard(lambda:self.call('workflow.boxes',{'category':c,'enabled':on,'nodes':self.category_nodes(c)})));self.box_buttons[category]=box
         self.steps=QComboBox();self.steps.setObjectName('WorkflowSteps');layout.insertWidget(2,self.steps)
         self.steps.currentIndexChanged.connect(self.change_step);self.tabs.tabBar().hide()
         one=self.page('01  导入与整理')
@@ -53,6 +54,9 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
             self.actions(child_form,(label+' · 对象轴心',lambda k=key:self.capture_child_point(k,'pivot')),(label+' · 顶点中心',lambda k=key:self.capture_child_point(k,'vertex')))
         tip=QLabel('先记住父骨骼，再选参考对象取点。支持无修改器的可编辑多边形，或当前 Edit Poly 的顶点；多选取平均中心。取点只读、不改堆栈。方向点远近不影响长度。');tip.setWordWrap(True);child_form.addRow(tip)
         self.actions(child_form,('按起点 / 方向点添加',lambda:self.add_child(False)),('从父骨骼末端顺延添加',lambda:self.add_child(True)))
+        # Continuation is the daily action; keep it above the optional point inputs.
+        row=child_form.takeRow(child_form.rowCount()-1)
+        child_form.insertRow(4,row.fieldItem.widget())
         self.actions(child_form,('清空取点（恢复继承）',lambda:(self.child_start.clear(),self.child_direction.clear())))
         self.skeleton.insertRow(0,'添加普通 Bone',child_box)
         symmetry=QWidget();symmetry_form=QVBoxLayout(symmetry);symmetry_form.setContentsMargins(0,0,0,0)
@@ -101,7 +105,8 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         self.vertex_values=QTreeWidget();self.vertex_values.setHeaderLabels(['模型','顶点','合计影响']);self.vertex_values.setMaximumHeight(150);self.vertex_values.setToolTip('每模型显示前 200 个所选 Skin 顶点；未选点时显示模型顶点。');w.addRow(self.vertex_values)
         w.addRow('所选骨骼合计权重 / 增量',self.value);w.addRow('保留影响数 N',self.limit)
         self.actions(w,('仅当前选中骨骼影响',lambda:self.call('weights.restrict',{'meshes':self.selected_models(),'boneNodes':self.selected_bones()},lambda _:self.read_skin())))
-        self.actions(w,('多骨骼赋值',lambda:self.multi('set')),('多骨骼加值',lambda:self.multi('add')),('多骨骼减值',lambda:self.multi('subtract')),('逐点仅保留 N 个影响',lambda:self.mutate('weights.edit',{'mode':'prune','threshold':0,'limit':self.limit.value(),'scope':self.scope.currentData()},self.read_skin)))
+        self.actions(w,('多骨骼赋值',lambda:self.multi('set')),('多骨骼加值',lambda:self.multi('add')),('多骨骼减值',lambda:self.multi('subtract')))
+        self.actions(w,('逐点仅保留 N 个影响',lambda:self.mutate('weights.edit',{'mode':'prune','threshold':0,'limit':self.limit.value(),'scope':self.scope.currentData()},self.read_skin)))
         w.addRow('选点平滑强度',self.strength);w.addRow('平滑次数',self.iterations);self.actions(w,('平滑选点',lambda:self.weight('smooth')),('归一化',lambda:self.weight('normalize')))
         self.component=QComboBox()
         for label,key in [('顶点','vertex'),('边','edge'),('面','face'),('混合点 / 边 / 面','mixed')]:self.component.addItem(label,key)
@@ -123,6 +128,107 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         for i in range(self.tabs.count()):self.steps.addItem(self.tabs.tabText(i))
         self.tabs.setCurrentIndex(0)
         self.build_shared_scene(two,w)
+        self.organize_pages(one,two,child_box,symmetry,six,w)
+        self.compact_chrome(bar)
+
+    def organize_pages(self,one,two,child_box,symmetry,six,weights):
+        from .scene_ui import SectionNavigator,take_rows,add_rows,WorkspaceStack,scroll_form
+        self.stage_panels={}
+        def install(index,primary,details):
+            title=self.tabs.tabText(index);old=self.tabs.widget(index)
+            panel=SectionNavigator(primary)
+            for name,rows in details:panel.add_detail(name,rows)
+            self.tabs.removeTab(index);self.tabs.insertTab(index,panel,title);old.deleteLater()
+            self.stage_panels[index]=panel;return panel
+        def has(row,widget):
+            def contains(value):
+                if value is widget:return True
+                if isinstance(value,QWidget):return value.isAncestorOf(widget)
+                if value is not None and hasattr(value,'count'):
+                    return any(contains(value.itemAt(i).widget() or value.itemAt(i).layout()) for i in range(value.count()))
+                return False
+            return contains(row[1])
+        rows=take_rows(one)
+        install(0,rows[:1],[('工作集管理',rows[1:])])
+        rows=take_rows(two);chain=[];main=[]
+        for row in rows:
+            (chain if any(has(row,v) for v in self.chain_counts.values()) else main).append(row)
+        install(1,main,[('链节、手指与脚趾',chain)])
+        rows=take_rows(self.skeleton);primary=[];symmetric=[];position=[];advanced=[];in_position=False
+        for row in rows:
+            if has(row,self.guide_level):in_position=True
+            if row[1] is child_box:primary.append(row)
+            elif row[1] is symmetry:symmetric.append(row)
+            elif in_position:position.append(row)
+            else:advanced.append(row)
+        install(2,primary,[('骨架对称',symmetric),('定位点与端点',position),('层级、绑定与姿态',advanced)])
+        rows=take_rows(six);main=[];settings=[]
+        for row in rows:
+            field=row[1]
+            low=has(row,self.falloff) or has(row,self.resolution) or isinstance(field,QLabel) and field is not self.bind_progress
+            (settings if low else main).append(row)
+        install(5,main,[('算法参数与说明',settings)])
+        rows=take_rows(weights);common=[];edit=[];brush=[];select=[];clean=[];values=[];mode='edit'
+        for row in rows:
+            field=row[1]
+            if field is self.component:mode='select'
+            if field is self.brush_mode:mode='brush'
+            if has(row,self.mesh) or field in (self.info,self.scope,self.color_view) or isinstance(field,QLabel) and field.text().startswith('蓝 0'):
+                common.append(row);continue
+            if field is self.vertex_values:values.append(row);continue
+            labels={b.text() for b in field.findChildren(QPushButton)} if isinstance(field,QWidget) else set()
+            if field is self.limit or labels & {'仅当前选中骨骼影响','逐点仅保留 N 个影响'}:clean.append(row);continue
+            {'edit':edit,'select':select,'brush':brush}[mode].append(row)
+        panel=install(6,common,[])
+        # Switch editing tasks without moving model/bone selection or the color toggle.
+        self.weight_mode=QComboBox();self.weight_mode.addItems(['权重编辑','视口笔刷'])
+        panel.overview_form.addRow('操作方式',self.weight_mode)
+        self.weight_tasks=WorkspaceStack()
+        for task in (edit,brush):
+            scroll,form=scroll_form(task);self.weight_tasks.addWidget(scroll)
+        self.weight_tasks.setMinimumHeight(250);panel.overview_form.addRow(self.weight_tasks)
+        self.weight_mode.currentIndexChanged.connect(self.weight_tasks.setCurrentIndex)
+        panel.add_detail('选区工具',select);panel.add_detail('影响与清理',clean);panel.add_detail('逐点数值',[(None,self.weight_summary),*values])
+        # Auxiliary tabs can have long translated titles. Use a bounded selector.
+        extra=self.tabs.widget(7);wrapper=QWidget();box=QVBoxLayout(wrapper);box.setContentsMargins(0,0,0,0)
+        selector=QComboBox();stack=WorkspaceStack()
+        while extra.count():
+            selector.addItem(extra.tabText(0));widget=extra.widget(0);extra.removeTab(0);stack.addWidget(widget)
+        selector.currentIndexChanged.connect(stack.setCurrentIndex);box.addWidget(selector);box.addWidget(stack,1)
+        self.tabs.removeTab(7);self.tabs.insertTab(7,wrapper,'辅助  表情 / 交换 / 恢复');extra.deleteLater()
+        self.auxiliary_mode=selector;self.tabs.setCurrentIndex(0)
+
+    def compact_chrome(self,visibility_bar):
+        from .scene_ui import WorkspaceStack,scroll_form,WrapButton
+        # Status remains fully readable in a bounded scroll area, including long failures.
+        layout=self.layout();layout.removeWidget(self.notice);layout.removeWidget(self.cancel)
+        footer=QHBoxLayout();status=QScrollArea();status.setWidgetResizable(True);status.setFrameShape(QFrame.Shape.NoFrame)
+        status.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);status.setFixedHeight(32)
+        self.notice.setWordWrap(True);self.notice.setMinimumWidth(0);status.setWidget(self.notice);footer.addWidget(status,1);footer.addWidget(self.cancel);layout.addLayout(footer)
+        layout.removeWidget(self.steps);step_row=QHBoxLayout();step_row.addWidget(self.steps,1)
+        self.display_button=WrapButton('显示与布局');step_row.addWidget(self.display_button);layout.insertLayout(1,step_row)
+        self.display_panel=QWidget();box=QVBoxLayout(self.display_panel);box.setContentsMargins(0,0,0,0)
+        back=WrapButton('‹ 返回工作区');back.clicked.connect(lambda:self.right_stack.setCurrentIndex(0));box.addWidget(back)
+        scroll,form=scroll_form();box.addWidget(scroll,1)
+        form.addRow('面板分区',self.layout_mode);form.addRow(self.workflow_only)
+        for category,(button,title) in self.visibility_buttons.items():form.addRow(self.box_buttons[category])
+        for button in self.view_buttons.values():form.addRow(button)
+        form.addRow(self.link_button)
+        row=QHBoxLayout()
+        for label,fn in [('展开层级',lambda:[t.expandAll() for t in self.category_trees.values()]),('折叠层级',lambda:[t.collapseAll() for t in self.category_trees.values()])]:
+            button=WrapButton(label);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button)
+        form.addRow(row)
+        self.right_stack=WorkspaceStack();self.right_stack.addWidget(self.tabs);self.right_stack.addWidget(self.display_panel)
+        self.splitter.insertWidget(1,self.right_stack)
+        self.splitter.setStretchFactor(0,0);self.splitter.setStretchFactor(1,1);self.splitter.setSizes([250,750])
+        self.display_button.clicked.connect(lambda:self.right_stack.setCurrentIndex(1-self.right_stack.currentIndex()))
+        # Long names must not determine the panel's minimum width.
+        for combo in self.findChildren(QComboBox):
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon);combo.setMinimumContentsLength(8)
+            combo.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);combo.setMinimumWidth(0)
+            combo.currentTextChanged.connect(combo.setToolTip);combo.setToolTip(combo.currentText())
+        for label in self.findChildren(QLabel):label.setWordWrap(True);label.setMinimumWidth(0)
+        for form in self.findChildren(QFormLayout):form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
     def remember_child_parent(self,from_list):
         refs=self.selected_bones()
         if from_list and len(refs)!=1:raise ValueError('请在骨骼栏只选一根普通 Bone')
@@ -175,19 +281,25 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         for widget in (self.symmetry_side,self.symmetry_whole,self.symmetry_auto_center):widget.setEnabled(True)
         self.symmetry_center.setEnabled(not self.symmetry_auto_center.isChecked())
     def build_shared_scene(self,two,weights_form):
-        from .scene_ui import prepare_tree,split_form
+        from .scene_ui import prepare_tree
         # Reuse the same model target, Skin selector and hierarchy in every step.
         body_layout=self.body.layout();target_form=body_layout.takeAt(0).layout();target_form.removeRow(2)
         body_layout.removeWidget(self.tabs)
-        self.skeleton.takeRow(self.tree);prepare_tree(self.tree)
+        self.skeleton.takeRow(self.tree)
+        # The base workbench still uses this hidden tree for scene/selection
+        # adapters. takeRow removes layout ownership, not its QObject parent;
+        # retain it before the retired skeleton page is deferred-deleted.
+        self.tree.setParent(self);self.tree.hide();prepare_tree(self.tree)
         self.shared_scene=QWidget();left=QVBoxLayout(self.shared_scene);left.setContentsMargins(0,0,8,0)
-        title=QLabel('场景工作集 · 全流程共用');title.setStyleSheet('font-size:14px;font-weight:600;color:#507522');left.addWidget(title)
-        self.layout().removeWidget(self.refresh);left.addWidget(self.refresh)
+        header=QHBoxLayout();title=QLabel('场景对象');title.setStyleSheet('font-size:14px;font-weight:600;color:#507522');header.addWidget(title,1)
+        self.layout().removeWidget(self.refresh);self.refresh.setText('刷新场景');header.addWidget(self.refresh);left.addLayout(header)
         self.scene_search=QLineEdit();self.scene_search.setPlaceholderText('搜索名称、肩、骨盆、左 / 右…');left.addWidget(self.scene_search)
-        self.workflow_only=QCheckBox('仅显示已导入 / 本工具生成的对象');self.workflow_only.setChecked(False);left.addWidget(self.workflow_only)
+        self.workflow_only=QCheckBox('仅显示已导入 / 本工具生成的对象');self.workflow_only.setChecked(False)
         self.build_categories(left)
+        left.removeWidget(self.influence_button);left.removeWidget(self.weight_summary)
         row=QHBoxLayout()
-        for label,fn in [('展开',lambda:[t.expandAll() for t in self.category_trees.values()]),('折叠',lambda:[t.collapseAll() for t in self.category_trees.values()]),('选中到 Max',lambda:self.call('nodes.select',{'nodes':self.selected()}))]:
+        row.addWidget(self.influence_button)
+        for label,fn in [('同步到 Max',lambda:self.call('nodes.select',{'nodes':self.selected()}))]:
             button=QPushButton(label);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button)
         left.addLayout(row);weights_form.insertRow(0,target_form)
         self.context_summary=QLabel('读取一次场景，各步骤共用对象和当前模型。');self.context_summary.setWordWrap(True);left.addWidget(self.context_summary)
@@ -196,16 +308,14 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         self.splitter=QSplitter(Qt.Orientation.Horizontal);self.splitter.addWidget(self.shared_scene);self.splitter.addWidget(self.tabs)
         self.splitter.setChildrenCollapsible(False);self.splitter.setStretchFactor(0,0);self.splitter.setStretchFactor(1,1);self.splitter.setSizes([330,720]);body_layout.addWidget(self.splitter,1)
         self.layout().setStretchFactor(self.body,1)
-        self.shared_scene.setMinimumWidth(260);self.tabs.setMinimumWidth(340)
-        self.form_columns=[split_form(two,8),split_form(self.skeleton,max(1,self.skeleton.rowCount()//2)),split_form(weights_form,weights_form.getWidgetPosition(self.component)[0])]
+        self.shared_scene.setMinimumWidth(210);self.tabs.setMinimumWidth(280)
+        self.form_columns=[]
         self.layout_mode=QComboBox();self.layout_mode.addItem('左右分区','horizontal');self.layout_mode.addItem('上下分区','vertical')
         self.layout_mode.currentIndexChanged.connect(lambda _:self.splitter.setOrientation(Qt.Orientation.Horizontal if self.layout_mode.currentData()=='horizontal' else Qt.Orientation.Vertical))
-        view_row=QHBoxLayout();view_row.addWidget(self.layout_mode);view_row.addWidget(QLabel('当前视口'))
         self.view_buttons={}
         for title,key in [('线框','wireframe'),('边面','edges'),('选择外框','brackets')]:
-            button=QPushButton(title);button.setCheckable(True);button.toggled.connect(lambda on,k=key:self.guard(lambda:self.call('viewport.display',{k:on},lambda data:self.load_viewport(data.get('viewport',{})))));view_row.addWidget(button);self.view_buttons[key]=button
-        self.link_button=QPushButton('骨骼连接线');self.link_button.setCheckable(True);self.link_button.setToolTip('显示工作集骨骼的父子层级连线，保留骨骼实体');self.link_button.toggled.connect(lambda on:self.guard(lambda:self.call('workflow.links',{'enabled':on})));view_row.addWidget(self.link_button)
-        self.layout().insertLayout(3,view_row)
+            button=QPushButton(title);button.setCheckable(True);button.toggled.connect(lambda on,k=key:self.guard(lambda:self.call('viewport.display',{k:on},lambda data:self.load_viewport(data.get('viewport',{})))));self.view_buttons[key]=button
+        self.link_button=QPushButton('骨骼连接线');self.link_button.setCheckable(True);self.link_button.setToolTip('显示工作集骨骼的父子层级连线，保留骨骼实体');self.link_button.toggled.connect(lambda on:self.guard(lambda:self.call('workflow.links',{'enabled':on})))
     def load_viewport(self,data):
         for key,button in getattr(self,'view_buttons',{}).items():
             button.blockSignals(True);button.setChecked(bool(data.get(key,False)));button.blockSignals(False)
@@ -217,7 +327,9 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         if not hasattr(self,'scene_search'):return
         from .scene_ui import filter_tree
         filter_tree(self.tree,self.nodes,self.scene_search.text(),self.workflow_only.isChecked());self.filter_categories()
-    def change_step(self,index):self.tabs.setCurrentIndex(index);self.invalidate_preview()
+    def change_step(self,index):
+        self.tabs.setCurrentIndex(index);self.invalidate_preview()
+        if hasattr(self,'right_stack'):self.right_stack.setCurrentIndex(0)
     def category_nodes(self,kind):
         from .selection_ui import category
         return [n['id'] for n in self.nodes if category(n)==kind]
@@ -253,7 +365,7 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
             from .scene_ui import decorate_tree
             from .selection_ui import category as node_category
             decorate_tree(self.tree,self.nodes);self.filter_scene_tree()
-            self.context_summary.setText('共用工作集：%d 模型 · %d 骨骼 · %d 控制器'%tuple(sum(node_category(n)==c for n in self.nodes) for c in ('models','bones','controls')))
+            self.context_summary.setText('%d 模型 · %d 骨骼 · %d 控制器'%tuple(sum(node_category(n)==c for n in self.nodes) for c in ('models','bones','controls')))
         if not hasattr(self,'roster'):return
         self.roster.clear();previous=self.align_target.currentData();self.align_target.clear();self.load_viewport(data.get('viewport',{}))
         for category,(button,title) in self.visibility_buttons.items():

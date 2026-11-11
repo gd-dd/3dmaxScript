@@ -94,6 +94,23 @@ def main():
             module.__package__ = ""
             sys.modules[module_name] = module
             exec(compile(code, str(virtual), "exec"), module.__dict__)
+            if source.stem == "test_ui":
+                # The historical screenshot case assumed a >900x680 default.
+                # The workbench now bounds its first size to the active screen,
+                # including Qt offscreen's 800x800 virtual screen. Preserve the
+                # original case and assertions at an explicit large viewport;
+                # compact/default geometry is covered by test_workbench_layout.
+                original_render = module.UITests.test_offscreen_render
+                def render_at_explicit_viewport(test, original=original_render):
+                    test.window.resize(1220, 850)
+                    return original(test)
+                module.UITests.test_offscreen_render = render_at_explicit_viewport
+                report["screenshotViewportAdaptation"] = {
+                    "test": "test_ui.UITests.test_offscreen_render",
+                    "logicalSize": [1220, 850],
+                    "historicalSourceAndAssertionsUnchanged": True,
+                    "reason": "responsive first-show sizing replaces a fixed large default",
+                }
             # Several original tests insert their own root; retain the parent as
             # the first search path without modifying those historical files.
             sys.path[:] = [str(ROOT)] + [p for p in sys.path if p != str(ROOT)]

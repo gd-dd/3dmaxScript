@@ -21,8 +21,8 @@ class RigDock(QDockWidget):
         self.queue={};self.closed=False;self.scene_token=str(rt.LXRigSceneToken)
         content=QWidget();content.setFont(QFont('Microsoft YaHei UI',9));self.setWidget(content)
         layout=QVBoxLayout(content);layout.setContentsMargins(10,10,10,10)
-        header=QHBoxLayout();icon=QLabel();icon.setPixmap(QPixmap(str(ROOT/'.lxtool/icon.png')).scaled(52,52,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));header.addWidget(icon)
-        title=QLabel('LX 绑定蒙皮\n骨骼 · 权重 · 人形 · 表情');title.setStyleSheet('font-size:15px;font-weight:600;color:#507522');header.addWidget(title,1);layout.addLayout(header)
+        header=QHBoxLayout();icon=QLabel();icon.setPixmap(QPixmap(str(ROOT/'.lxtool/icon.png')).scaled(34,34,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));header.addWidget(icon)
+        title=QLabel('LX 绑定蒙皮');title.setStyleSheet('font-size:15px;font-weight:600;color:#507522');header.addWidget(title,1);layout.addLayout(header)
         self.workbench=RigWorkbench(self);layout.addWidget(self.workbench,1)
         self.workbench.set_target(self.scene_token);self.workbench.notice.setText('直接操作当前 Max 场景。请读取场景并选择模型。')
         from .theme import STYLE,apply_popup_palette
@@ -88,5 +88,10 @@ def show_workbench():
     rt.fileIn(str(ROOT/'bridge/rig_context.ms'),quiet=True)
     main=qtmax.GetQMaxMainWindow();_dock=RigDock(main)
     main.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,_dock)
-    _dock.setFloating(True);_dock.resize(_dock.sizeHint())
+    _dock.setFloating(True)
+    screen=_dock.screen()
+    available=screen.availableGeometry() if screen else None
+    hint=_dock.sizeHint()
+    if available:hint=QSize(min(hint.width(),max(680,available.width()-40)),min(hint.height(),max(480,available.height()-64)))
+    _dock.resize(hint)
     _dock.show();_dock.raise_();return _dock

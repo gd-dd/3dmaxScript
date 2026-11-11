@@ -26,8 +26,7 @@
     "model.py",
     "preset.py",
     "session.py",
-    "solver.py",
-    "ui.py"
+    "solver.py"
   ],
   "routingAdaptations": [
     "launcher.py",
@@ -48,11 +47,23 @@
     "preset.py": "facd6499fae1749d744bf36c430d8862ee631512c06ba4451e93acb24310e46d",
     "session.py": "7ad2ac673d7dba27a86e9cd0013843006d4345dd58ebf4fec7a0daf74bb42111",
     "solver.py": "35ff2ba2a228421b21d8e06785efd6ec13211d912ee60e08da03db73a348d4fa",
-    "ui.py": "1624fc30140c05312d2593955933027998dfdf10cb40ef0ff2448ee56803906b"
+    "ui.py": "24be12a7977d92fb4db44c34b9d1cf37d72ce1a14988a7a8b4bcb464aacd6de9"
   },
   "currentRoutingSha256": {
     "launcher.py": "3e692eacb6e67b2754af23c6877eed4929528d08d15ec6563a75e2602fdc7223",
     "start.py": "3c8facdd80f197c062d0f4ef0351adeb7a006d5b8f5429f0328cb3a4792b7e3b",
     "icon.png": "68871847e7faf8d79be53ce3cb627fef64054a24e24ec1ec4347399e0a8701a1"
+  },
+  "uiAdaptations": [
+    "ui.py"
+  ],
+  "uiLayoutRevision": {
+    "task": "ALL-UI-20261112",
+    "date": "2026-11-12",
+    "baselineUiSha256": "1624fc30140c05312d2593955933027998dfdf10cb40ef0ff2448ee56803906b",
+    "candidateUiSha256": "24be12a7977d92fb4db44c34b9d1cf37d72ce1a14988a7a8b4bcb464aacd6de9",
+    "scope": "Persistent mapping/nodes/settings pages, compact actions, bounded long-name controls and scrollable secondary settings. Original math/session/host and recovery contracts retained.",
+    "parentManifestRefreshOwnedBy": "maxsuite",
+    "noIndependentToolOrRelease": true
   }
 }

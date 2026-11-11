@@ -10,18 +10,18 @@ try(destroyDialog MatIDSplitRollout)catch()
 
 rollout MatIDSplitRollout "按材质ID拆分模型" width:420
 (
-    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+    dotNetControl lxHeader "System.Windows.Forms.Panel" pos:[14,12] width:392 height:64
 
     ----------------------------------------------------------------------------
     --  UI
     ----------------------------------------------------------------------------
-    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  源对象"
-        pickbutton btnPickSrc "选择对象" width:376 height:28 autoDisplay:true
-        dotNetControl lblSrcInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
-    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  选项"
-        dotNetControl chkDeleteSrc "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"拆分后删除原对象" Checked:false
-        checkbox chkCopyMat   "新元素保留材质"   checked:true
-    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
+    dotNetControl lxSection1 "System.Windows.Forms.Label" Text:"01  源对象" pos:[14,88] width:392 height:26
+        pickbutton btnPickSrc "选择对象" autoDisplay:true pos:[22,122] width:376 height:28
+        dotNetControl lblSrcInfo "System.Windows.Forms.Label" Text:"未选择" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter) pos:[22,156] width:376 height:34
+    dotNetControl lxSection2 "System.Windows.Forms.Label" Text:"02  选项" pos:[14,198] width:392 height:26
+        dotNetControl chkDeleteSrc "System.Windows.Forms.CheckBox" Text:"拆分后删除原对象" Checked:false pos:[22,232] width:376 height:24
+        checkbox chkCopyMat   "新元素保留材质"   checked:true pos:[22,260] width:376 height:24
+    dotNetControl btnExecute "System.Windows.Forms.Button" pos:[22,294] width:376 height:38
 
     ----------------------------------------------------------------------------
     --  变量
@@ -193,7 +193,7 @@ rollout MatIDSplitRollout "按材质ID拆分模型" width:420
 
 )
 
-createDialog MatIDSplitRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
+createDialog MatIDSplitRollout width:420 height:346 bgcolor:(color 248 250 245) fgcolor:(color 48 61 42) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "按材质ID拆分模型工具已加载。\n"
 

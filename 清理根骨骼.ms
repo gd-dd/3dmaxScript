@@ -10,23 +10,25 @@ try(destroyDialog RootBoneBakeRollout)catch()
 
 rollout RootBoneBakeRollout "根骨骼约束烘焙" width:420
 (
-    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+    dotNetControl lxHeader "System.Windows.Forms.Panel" pos:[14,8] width:392 height:64
 
-    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  源 - 根骨骼"
-        pickbutton btnPickBone "选择 Bip001" width:376 height:28 autoDisplay:true
-        dotNetControl lblBoneInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"执行时自动查找 Bip001" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
-    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  目标 - 虚拟体"
-        pickbutton btnPickDummy "选择虚拟体" width:376 height:28 autoDisplay:true
-        dotNetControl lblDummyInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"也可先选中虚拟体再打开工具" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter)
-    dotNetControl lxSection3 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"03  对齐 —— 勾选 = 将该轴位移传给虚拟体"
-        dotNetControl chkAxisX "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"X 轴" Checked:false
-        dotNetControl chkAxisY "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"Y 轴" Checked:true
-        dotNetControl chkAxisZ "System.Windows.Forms.CheckBox" width:376 height:24 align:#center Text:"Z 轴" Checked:false
-    dotNetControl lxSection4 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"04  帧范围"
-        spinner spnStart "起始帧:" range:[-9999,99999,0] type:#integer width:120
-        spinner spnEnd   "结束帧:" range:[-9999,99999,100] type:#integer width:120
-        dotNetControl btnGetRange "System.Windows.Forms.Button" width:376 height:30 align:#center
-    dotNetControl btnExecute "System.Windows.Forms.Button" width:376 height:42 align:#center
+    dotNetControl lxSection1 "System.Windows.Forms.Label" Text:"01  源 - 根骨骼" pos:[14,78] width:392 height:24
+        pickbutton btnPickBone "选择 Bip001" autoDisplay:true pos:[22,106] width:376 height:26
+        dotNetControl lblBoneInfo "System.Windows.Forms.Label" Text:"执行时自动查找 Bip001" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter) pos:[22,136] width:376 height:30
+    dotNetControl lxSection2 "System.Windows.Forms.Label" Text:"02  目标 - 虚拟体" pos:[14,170] width:392 height:24
+        pickbutton btnPickDummy "选择虚拟体" autoDisplay:true pos:[22,198] width:376 height:26
+        dotNetControl lblDummyInfo "System.Windows.Forms.Label" Text:"也可先选中虚拟体再打开工具" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleCenter) pos:[22,228] width:376 height:30
+    dotNetControl lxSection3 "System.Windows.Forms.Label" Text:"03  传递位移轴（勾选的轴传给虚拟体）" pos:[14,262] width:392 height:24
+        dotNetControl chkAxisX "System.Windows.Forms.CheckBox" Text:"X 轴" Checked:false pos:[22,290] width:120 height:24
+        dotNetControl chkAxisY "System.Windows.Forms.CheckBox" Text:"Y 轴" Checked:true pos:[150,290] width:120 height:24
+        dotNetControl chkAxisZ "System.Windows.Forms.CheckBox" Text:"Z 轴" Checked:false pos:[278,290] width:120 height:24
+    dotNetControl lxSection4 "System.Windows.Forms.Label" Text:"04  帧范围" pos:[14,318] width:392 height:24
+        dotNetControl spnStartLabel "System.Windows.Forms.Label" Text:"开始" pos:[22,350] width:36 height:20
+        spinner spnStart "" range:[-9999,99999,0] type:#integer pos:[62,348] width:120 height:20
+        dotNetControl spnEndLabel "System.Windows.Forms.Label" Text:"结束" pos:[220,350] width:36 height:20
+        spinner spnEnd   "" range:[-9999,99999,100] type:#integer pos:[260,348] width:138 height:20
+        dotNetControl btnGetRange "System.Windows.Forms.Button" pos:[22,382] width:160 height:30
+    dotNetControl btnExecute "System.Windows.Forms.Button" pos:[198,380] width:200 height:36
 
     local boneNode  = undefined
     local dummyNode = undefined
@@ -44,6 +46,8 @@ rollout RootBoneBakeRollout "根骨骼约束烘焙" width:420
     )
     on RootBoneBakeRollout open do
     (
+        LXLegacyText spnStartLabel
+        LXLegacyText spnEndLabel
         LXLegacySection lxSection1
         LXLegacySection lxSection2
         LXLegacySection lxSection3
@@ -149,7 +153,7 @@ rollout RootBoneBakeRollout "根骨骼约束烘焙" width:420
 
 )
 
-createDialog RootBoneBakeRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
+createDialog RootBoneBakeRollout width:420 height:430 bgcolor:(color 248 250 245) fgcolor:(color 48 61 42) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 
 format "根骨骼约束烘焙工具已加载。\n"
 

@@ -527,14 +527,14 @@ try(destroyDialog PMXImportRollout)catch()
 
 rollout PMXImportRollout "PMX 导入" width:420
 (
-    dotNetControl lxHeader "System.Windows.Forms.Panel" width:392 height:84 align:#center
+    dotNetControl lxHeader "System.Windows.Forms.Panel" pos:[14,12] width:392 height:64
 
-    dotNetControl lxSection1 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"01  PMX 文件"
-        editText edtPath "" width:300 height:22 readonly:true
-        dotNetControl btnBrowse "System.Windows.Forms.Button" width:376 height:30 align:#center
-    dotNetControl lxSection2 "System.Windows.Forms.Label" width:392 height:28 align:#center Text:"02  模型信息"
-        dotNetControl lblInfo "System.Windows.Forms.Label" width:376 height:22 align:#center Text:"尚未选择文件" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft)
-    dotNetControl btnImport "System.Windows.Forms.Button" width:376 height:42 align:#center enabled:false
+    dotNetControl lxSection1 "System.Windows.Forms.Label" Text:"01  PMX 文件" pos:[14,88] width:392 height:26
+        editText edtPath "" readonly:true pos:[22,122] width:376 height:24
+        dotNetControl btnBrowse "System.Windows.Forms.Button" pos:[22,154] width:376 height:30
+    dotNetControl lxSection2 "System.Windows.Forms.Label" Text:"02  模型信息" pos:[14,196] width:392 height:26
+        dotNetControl lblInfo "System.Windows.Forms.Label" Text:"尚未选择文件" TextAlign:((dotNetClass "System.Drawing.ContentAlignment").MiddleLeft) pos:[22,230] width:376 height:56
+    dotNetControl btnImport "System.Windows.Forms.Button" enabled:false pos:[22,300] width:376 height:38
 
     local selectedFilePath=""
 
@@ -584,6 +584,6 @@ rollout PMXImportRollout "PMX 导入" width:420
 
 )
 
-createDialog PMXImportRollout width:420 bgcolor:(color 39 44 37) fgcolor:(color 229 235 222) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
+createDialog PMXImportRollout width:420 height:352 bgcolor:(color 248 250 245) fgcolor:(color 48 61 42) style:#(#style_titlebar, #style_sysmenu, #style_toolwindow)
 format "PMX导入插件已加载。\n"
 -- 纳西妲世界第一可爱

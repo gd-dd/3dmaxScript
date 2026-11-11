@@ -55,8 +55,8 @@ def quaternion_xyz(quaternion):
 
 STYLE = """
 QWidget { color: #24372d; font-family: 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif; font-size: 12px; }
-QDialog#RetargetWindow, QDialog#ChainEditor { background: #f4f8f4; }
-QLabel#heading { font-size: 23px; font-weight: 700; }
+QDialog#RetargetWindow, QDialog#ChainEditor, QDialog#SuggestionDialog, QDialog#RebindDialog { background: #f4f8f4; }
+QLabel#heading { font-size: 20px; font-weight: 700; }
 QLabel#subtitle, QLabel#help { color: #62766a; }
 QLabel#status { background: #e6f3e8; border: 1px solid #c9e3ce; border-radius: 5px; padding: 7px; }
 QGroupBox { background: #ffffff; border: 1px solid #d7e3da; border-radius: 6px; margin-top: 12px; padding: 9px; }
@@ -67,6 +67,13 @@ QPushButton:hover { background: #eaf5ec; border-color: #8fbc99; }
 QPushButton:disabled { color: #97a79b; background: #f0f3f0; }
 QPushButton#primary { color: #173f28; background: #a6dfb2; border-color: #81bd8d; font-weight: 600; }
 QPushButton#primary:hover { background: #95d7a4; }
+QPushButton#navigation:checked { background: #d8efdf; border-color: #8fbc99; font-weight: 600; }
+QToolButton { background: #ffffff; color: #24372d; border: 1px solid #c9dace; border-radius: 4px; padding: 6px 9px; min-height: 19px; }
+QToolButton:hover { background: #eaf5ec; }
+QMenu { background: #ffffff; color: #24372d; border: 1px solid #c9dace; padding: 4px; }
+QMenu::item { padding: 7px 16px; }
+QMenu::item:selected { background: #d8efdf; }
+QScrollArea { background: transparent; border: 0; }
 QListWidget, QTableWidget, QPlainTextEdit { background: white; border: 1px solid #d2e0d6; border-radius: 4px; selection-background-color: #d8efdf; selection-color: #183d27; }
 QHeaderView::section { background: #edf5ee; color: #3e5d49; border: 0; border-bottom: 1px solid #d2e0d6; padding: 8px; font-weight: 600; }
 QTableWidget::item:selected { background: #d8efdf; color: #183d27; }
@@ -76,6 +83,65 @@ QTabBar::tab { background: #eaf1eb; padding: 7px 15px; }
 QTabBar::tab:selected { background: #ffffff; color: #277d42; }
 QToolTip { color: #24372d; background: #f7fff8; border: 1px solid #a6c6ad; }
 """
+
+
+class ElidedLabel(QtWidgets.QLabel):
+    """Keep the complete plain text for access/tooltip without widening layouts."""
+    def __init__(self, text="", parent=None, padding=0):
+        super().__init__(parent)
+        self._padding = padding
+        self.setTextFormat(QtCore.Qt.PlainText)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+        self.setFixedHeight(self.fontMetrics().lineSpacing() + padding * 2 + 2)
+        self.setText(text)
+
+    def setText(self, text):
+        super().setText(str(text))
+        self.setToolTip(str(text))
+
+    def sizeHint(self):
+        return QtCore.QSize(280, self.height())
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(0, self.height())
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        option = QtWidgets.QStyleOption()
+        option.initFrom(self)
+        self.style().drawPrimitive(QtWidgets.QStyle.PE_Widget, option, painter, self)
+        rect = self.contentsRect().adjusted(self._padding, 0, -self._padding, 0)
+        text = self.fontMetrics().elidedText(self.text().replace("\n", " · "), QtCore.Qt.ElideRight, max(0, rect.width()))
+        painter.setPen(self.palette().color(QtGui.QPalette.WindowText))
+        painter.drawText(rect, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, text)
+
+
+def help_label(text):
+    label = QtWidgets.QLabel(text)
+    label.setTextFormat(QtCore.Qt.PlainText)
+    label.setWordWrap(True)
+    label.setMinimumWidth(0)
+    label.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
+    label.setToolTip(text)
+    label.setObjectName("help")
+    return label
+
+
+def action_menu(text, entries):
+    widget = QtWidgets.QToolButton()
+    widget.setText(text)
+    widget.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+    menu = QtWidgets.QMenu(widget)
+    for label, callback, tooltip in entries:
+        if label is None:
+            menu.addSeparator()
+            continue
+        action = menu.addAction(label)
+        action.triggered.connect(callback)
+        action.setToolTip(tooltip)
+    widget.setMenu(menu)
+    return widget
 
 
 class NoWheelSpinBox(QtWidgets.QSpinBox):
@@ -204,20 +270,26 @@ class SidePanel(QtWidgets.QGroupBox):
         layout = QtWidgets.QVBoxLayout(self)
         self.capture_button = button("读取 Max 选择", lambda: self.captureRequested.emit(side))
         self.capture_button.setToolTip("先在 Max 选中骨架根或节点；只读取这一侧，不会自动占用视口选择。")
-        layout.addWidget(self.capture_button)
         self.search = QtWidgets.QLineEdit()
         self.search.setPlaceholderText("搜索" + self.side_name + "节点 / 层级路径")
         self.search.textChanged.connect(self.filter_nodes)
-        layout.addWidget(self.search)
+        capture_row = QtWidgets.QHBoxLayout()
+        capture_row.addWidget(self.capture_button)
+        capture_row.addWidget(self.search, 1)
+        layout.addLayout(capture_row)
         self.count = QtWidgets.QLabel("尚未读取")
         self.count.setObjectName("help")
         layout.addWidget(self.count)
         self.nodes = QtWidgets.QListWidget()
         self.nodes.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.nodes.setTextElideMode(QtCore.Qt.ElideMiddle)
+        self.nodes.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.nodes.itemDoubleClicked.connect(lambda _: self.locateRequested.emit(self.selected_ids()))
         layout.addWidget(self.nodes, 1)
-        layout.addWidget(button("填入当前链", lambda: self.assignRequested.emit(side, self.selected_ids()), "按列表中的层级顺序，整体替换当前链的这一侧。"))
-        layout.addWidget(button("在 Max 中定位", lambda: self.locateRequested.emit(self.selected_ids()), "这是明确的选择操作，会将视口选择切换为所选节点。"))
+        node_actions = QtWidgets.QHBoxLayout()
+        node_actions.addWidget(button("填入当前链", lambda: self.assignRequested.emit(side, self.selected_ids()), "按列表中的层级顺序，整体替换当前链的这一侧。"))
+        node_actions.addWidget(button("在 Max 中定位", lambda: self.locateRequested.emit(self.selected_ids()), "这是明确的选择操作，会将视口选择切换为所选节点。"))
+        layout.addLayout(node_actions)
         self.setMinimumWidth(150)
 
     def selected_ids(self):
@@ -232,7 +304,7 @@ class SidePanel(QtWidgets.QGroupBox):
             path = value(node, "path", "")
             item.setData(QtCore.Qt.UserRole + 1, (str(path) + " " + value(node, "name", "")).casefold())
             kind = value(node, "kind", "未知")
-            item.setToolTip(f"{path}\n类型：{kind}\n只读" if not value(node, "writable", True) else f"{path}\n类型：{kind}")
+            item.setToolTip(f"名称：{value(node, 'name', node_id(node))}\n完整路径：{path}\n类型：{kind}" + ("\n只读" if not value(node, "writable", True) else ""))
             self.nodes.addItem(item)
             item.setSelected(node_id(node) in selected)
         self.filter_nodes()
@@ -311,6 +383,7 @@ class ChainEditor(QtWidgets.QDialog):
             row.addWidget(group, 1)
         layout.addLayout(row, 1)
         self.message = QtWidgets.QLabel("")
+        self.message.setTextFormat(QtCore.Qt.PlainText)
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
         footer = QtWidgets.QHBoxLayout()
@@ -399,6 +472,8 @@ class ChainEditor(QtWidgets.QDialog):
 class SuggestionDialog(QtWidgets.QDialog):
     def __init__(self, suggestions, chains, name_lookup, parent=None):
         super().__init__(parent)
+        self.setObjectName("SuggestionDialog")
+        self.setStyleSheet(STYLE)
         self.setWindowTitle("确认自动匹配建议")
         self.resize(960, 420)
         self.suggestions = list(suggestions)
@@ -450,6 +525,8 @@ class RebindDialog(QtWidgets.QDialog):
     """Every changed/ambiguous portable identity needs an explicit user choice."""
     def __init__(self, session, unresolved, parent=None):
         super().__init__(parent)
+        self.setObjectName("RebindDialog")
+        self.setStyleSheet(STYLE)
         self.setWindowTitle("预设节点重绑定")
         self.resize(950, 420)
         self.unresolved = list(unresolved)
@@ -467,14 +544,17 @@ class RebindDialog(QtWidgets.QDialog):
             label = "源骨架" if side == "source" else "目标骨架"
             self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(label))
             self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(str(value(issue, "name", value(issue, "preset_id", "")))))
-            combo = NoWheelComboBox()
+            self.table.item(row, 1).setToolTip(self.table.item(row, 1).text())
+            combo = ChainNodeComboBox()
             combo.addItem("— 保持待绑定 —", None)
+            combo.setItemData(0, "列表包含这一侧全部已读取节点；候选只是线索，需明确选择。", QtCore.Qt.ToolTipRole)
             suggested = {str(i) for i in value(issue, "candidates", [])}
             for node in getattr(session, side):
                 identity = node_id(node)
                 suffix = " · 建议候选" if identity in suggested else ""
                 combo.addItem(value(node, "name", identity) + "  ·  " + str(value(node, "path", identity)) + suffix, identity)
-            combo.setToolTip("列表包含这一侧全部已读取节点。候选只是线索，不会自动选中。")
+                combo.setItemData(combo.count()-1, "名称：" + str(value(node, "name", identity)) + "\n完整路径：" + str(value(node, "path", identity)) + suffix, QtCore.Qt.ToolTipRole)
+            combo._update_tooltip()
             self.table.setCellWidget(row, 2, combo)
             self.combos.append(combo)
             reason = str(value(issue, "reason", "需要手动确认身份"))
@@ -484,11 +564,13 @@ class RebindDialog(QtWidgets.QDialog):
             self.table.setRowHeight(row, 44)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Interactive)
+        header.resizeSection(1, 160)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
         layout.addWidget(self.table, 1)
         self.message = QtWidgets.QLabel("")
+        self.message.setTextFormat(QtCore.Qt.PlainText)
         layout.addWidget(self.message)
         footer = QtWidgets.QHBoxLayout()
         footer.addStretch()
@@ -500,7 +582,7 @@ class RebindDialog(QtWidgets.QDialog):
         result = {"source": {}, "target": {}}
         for issue, combo in zip(self.unresolved, self.combos):
             identity = combo.currentData()
-            if identity is not None:
+            if identity is not None and combo.currentText() == combo.itemText(combo.currentIndex()):
                 result[value(issue, "side", "source")][str(value(issue, "preset_id", ""))] = str(identity)
         return result["source"], result["target"]
 
@@ -527,81 +609,180 @@ class RetargetWindow(QtWidgets.QDialog):
         self.setWindowTitle("LX 双骨架重定向")
         self.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
-        self.resize(1220, 850)
-        self.setMinimumSize(900, 680)
         self.setStyleSheet(STYLE)
+        self.setMinimumSize(760, 460)
         outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(16, 13, 16, 12)
+        outer.setContentsMargins(12, 9, 12, 9)
+        outer.setSpacing(6)
         self.content = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(self.content)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
         titlebar = QtWidgets.QHBoxLayout()
         heading = QtWidgets.QLabel("双骨架重定向")
         heading.setObjectName("heading")
         titlebar.addWidget(heading)
         titlebar.addStretch()
-        self.rebind_button = button("处理待重绑定", self.rebind_presets)
-        self.rebind_button.setEnabled(False)
-        titlebar.addWidget(self.rebind_button)
-        titlebar.addWidget(button("加载预设", self.load_preset))
-        titlebar.addWidget(button("保存预设", self.save_preset))
+        self.navigation_buttons = {}
+        for key, label, callback in (("mapping", "关键链映射", self.show_mapping),
+                                     ("nodes", "骨架节点", self.show_nodes),
+                                     ("settings", "设置与记录", lambda: self.show_settings(self.tabs.currentIndex()))):
+            entry = button(label, callback)
+            entry.setObjectName("navigation")
+            entry.setCheckable(True)
+            self.navigation_buttons[key] = entry
+            titlebar.addWidget(entry)
         layout.addLayout(titlebar)
-        subtitle = QtWidgets.QLabel("源与目标同时保留在场景 · 先读取两侧，再配置关键链和参考姿态")
-        subtitle.setObjectName("subtitle")
-        layout.addWidget(subtitle)
         host_label = getattr(session.host, "instance_label", None) or getattr(session.host, "name", None)
         if callable(host_label):
             host_label = host_label()
-        self.instance = QtWidgets.QLabel("当前 Max 实例：" + str(host_label or "由此窗口所在宿主确定，不自动切换实例"))
+        self.instance = ElidedLabel("当前 Max 实例：" + str(host_label or "由此窗口所在宿主确定，不自动切换实例"))
         self.instance.setObjectName("help")
         layout.addWidget(self.instance)
-        top = QtWidgets.QHBoxLayout()
-        self.include_children = QtWidgets.QCheckBox("读取时包含所选节点的子级")
-        self.include_children.setMinimumWidth(270)
-        self.include_children.setChecked(True)
-        top.addWidget(self.include_children)
-        top.addStretch()
-        self.chain_filter = QtWidgets.QLineEdit()
-        self.chain_filter.setMaximumWidth(300)
-        self.chain_filter.setPlaceholderText("筛选关键链 / 已映射节点")
-        self.chain_filter.textChanged.connect(self.filter_chains)
-        top.addWidget(self.chain_filter)
-        layout.addLayout(top)
-        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.pages = QtWidgets.QStackedWidget()
+        self.pages.setMinimumSize(0, 0)
+        layout.addWidget(self.pages, 1)
         self.side_panels = {}
-        source = self._side_panel("source")
-        target = self._side_panel("target")
-        self.splitter.addWidget(source)
-        self.splitter.addWidget(self._mapping_panel())
-        self.splitter.addWidget(target)
-        self.splitter.setSizes([200, 750, 200])
-        layout.addWidget(self.splitter, 5)
-        layout.addWidget(self._visibility_panel())
+
+        self.mapping_page = QtWidgets.QWidget()
+        mapping_layout = QtWidgets.QVBoxLayout(self.mapping_page)
+        mapping_layout.setContentsMargins(0, 0, 0, 0)
+        mapping_layout.setSpacing(5)
+        read_row = QtWidgets.QHBoxLayout()
+        self.capture_buttons = {}
+        for side, label in (("source", "读取源选择"), ("target", "读取目标选择")):
+            entry = button(label, lambda _=False, s=side: self.capture(s),
+                           "先在 Max 中选择这一侧的根或节点；只读取骨架，不会改变当前选择。")
+            self.capture_buttons[side] = entry
+            read_row.addWidget(entry)
+        self.include_children = QtWidgets.QCheckBox("包含子级")
+        self.include_children.setToolTip("读取时包含所选节点的子级；源与目标分别读取。")
+        self.include_children.setChecked(True)
+        read_row.addWidget(self.include_children)
+        self.capture_summary = ElidedLabel("尚未读取源与目标")
+        self.capture_summary.setObjectName("help")
+        read_row.addWidget(self.capture_summary, 1)
+        read_row.addWidget(button("筛选节点…", self.show_nodes, "查看双侧完整节点列表、搜索、定位或填入当前链。"))
+        mapping_layout.addLayout(read_row)
+        self.visibility_panel = self._visibility_panel()
+        mapping_layout.addWidget(self.visibility_panel)
+        self.mapping_container = self._mapping_panel()
+        mapping_layout.addWidget(self.mapping_container, 1)
+        summary_row = QtWidgets.QHBoxLayout()
+        self.range_summary = ElidedLabel()
+        self.summary = self.range_summary
+        self.range_summary.setObjectName("help")
+        summary_row.addWidget(self.range_summary, 1)
+        summary_row.addWidget(button("输出设置…", lambda: self.show_settings(0)))
+        mapping_layout.addLayout(summary_row)
+        self.pages.addWidget(self.mapping_page)
+
+        self.nodes_page = QtWidgets.QWidget()
+        nodes_layout = QtWidgets.QVBoxLayout(self.nodes_page)
+        nodes_layout.setContentsMargins(0, 0, 0, 0)
+        nodes_heading = QtWidgets.QHBoxLayout()
+        nodes_heading.addWidget(ElidedLabel("骨架节点 · 搜索完整名称或路径，选择后填入当前链"), 1)
+        nodes_heading.addWidget(button("返回映射", self.show_mapping))
+        nodes_layout.addLayout(nodes_heading)
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.addWidget(self._side_panel("source"))
+        self.splitter.addWidget(self._side_panel("target"))
+        self.splitter.setSizes([500, 500])
+        nodes_layout.addWidget(self.splitter, 1)
+        self.pages.addWidget(self.nodes_page)
+
+        self.settings_page = QtWidgets.QWidget()
+        settings_layout = QtWidgets.QVBoxLayout(self.settings_page)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
+        presets = QtWidgets.QHBoxLayout()
+        presets.addWidget(button("加载预设", self.load_preset))
+        presets.addWidget(button("保存预设", self.save_preset))
+        self.rebind_button = button("处理待重绑定", self.rebind_presets)
+        self.rebind_button.setEnabled(False)
+        presets.addWidget(self.rebind_button)
+        presets.addStretch()
+        presets.addWidget(button("返回映射", self.show_mapping))
+        settings_layout.addLayout(presets)
         self.tabs = QtWidgets.QTabWidget()
-        self.tabs.addTab(self._basic_panel(), "基础设置")
-        self.tabs.addTab(self._advanced_panel(), "按链高级设置")
+        self.basic_scroll = self._scroll_panel(self._basic_panel())
+        self.advanced_scroll = self._scroll_panel(self._advanced_panel())
+        self.tabs.addTab(self.basic_scroll, "参考姿态与输出")
+        self.tabs.addTab(self.advanced_scroll, "按链高级设置")
         self.tabs.addTab(self._report_panel(), "预检与操作记录")
-        self.tabs.setMaximumHeight(245)
-        layout.addWidget(self.tabs, 2)
+        settings_layout.addWidget(self.tabs, 1)
+        self.pages.addWidget(self.settings_page)
+
         actions = QtWidgets.QHBoxLayout()
-        actions.addWidget(button("预检", self.preflight))
-        actions.addWidget(button("预览当前帧", self.preview))
-        actions.addWidget(button("恢复预览", self.restore_preview))
-        actions.addWidget(button("恢复上次烘焙", self.restore_last_bake, "恢复本会话上次成功烘焙之前的数据。重新烘焙会更新恢复点。"))
-        actions.addStretch()
+        self.preflight_button = button("预检", self.preflight)
+        self.preview_button = button("预览当前帧", self.preview)
+        self.restore_preview_button = button("恢复预览", self.restore_preview)
+        self.restore_bake_button = button("恢复上次烘焙", self.restore_last_bake,
+                                          "恢复本会话上次成功烘焙之前的数据。重新烘焙会更新恢复点。")
         self.bake_button = button("烘焙到目标", self.bake, primary=True)
+        for entry in (self.preflight_button, self.preview_button, self.restore_preview_button, self.restore_bake_button):
+            actions.addWidget(entry)
+        actions.addStretch()
         actions.addWidget(self.bake_button)
         layout.addLayout(actions)
         outer.addWidget(self.content, 1)
-        self.status = QtWidgets.QLabel("尚未预览。请读取源骨架与目标骨架，并分别记录参考姿态。")
+        self.status = ElidedLabel("尚未预览。请读取源骨架与目标骨架，并分别记录参考姿态。", padding=7)
         self.status.setObjectName("status")
-        self.status.setWordWrap(True)
         outer.addWidget(self.status)
         initial_settings = getattr(session, "settings", {})
         if isinstance(initial_settings, dict) and initial_settings:
             self._load_settings(initial_settings)
         self.refresh()
         self._connect_settings()
+        self._update_summary()
+        self.show_mapping()
+        self._initial_size()
+
+    def _initial_size(self):
+        screen = self.parentWidget().screen() if self.parentWidget() and hasattr(self.parentWidget(), "screen") else None
+        if screen is None:
+            screen = QtWidgets.QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else QtCore.QRect(0, 0, 1280, 900)
+        self.setMinimumSize(min(760, available.width()), min(460, available.height()))
+        self.resize(min(1180, max(self.minimumWidth(), available.width() - 36)),
+                    min(780, max(self.minimumHeight(), available.height() - 56)))
+
+    @staticmethod
+    def _scroll_panel(widget):
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroll.setMinimumSize(0, 0)
+        scroll.setWidget(widget)
+        return scroll
+
+    def _show_page(self, key, page):
+        self.pages.setCurrentWidget(page)
+        for name, entry in self.navigation_buttons.items():
+            entry.setChecked(name == key)
+
+    def show_mapping(self):
+        self._show_page("mapping", self.mapping_page)
+        self.mapping.setFocus(QtCore.Qt.OtherFocusReason)
+
+    def show_nodes(self, side=None):
+        self._show_page("nodes", self.nodes_page)
+        if side in self.side_panels:
+            self.side_panels[side].search.setFocus(QtCore.Qt.OtherFocusReason)
+
+    def show_settings(self, index=0):
+        self._show_page("settings", self.settings_page)
+        self.tabs.setCurrentIndex(index)
+
+    def show_report(self):
+        self.show_settings(2)
+
+    def _update_summary(self):
+        if not hasattr(self, "range_summary") or not hasattr(self, "output_mode"):
+            return
+        self.range_summary.setText(f"烘焙 {self.start.value()}–{self.end.value()} 帧 · 步长 {self.step.value()} · {self.output_mode.currentText()} · {self.root_mode.currentText()}")
+        self.range_summary.setToolTip(self.range_summary.text() +
+                                     f"\n参考姿态帧：{self.reference_frame.value()}\n根运动：{self.root_mode.currentText()}\n位移比例：{self.scale_mode.currentText()} · {self.scale.value():g}")
 
     def _side_panel(self, side):
         panel = SidePanel(side)
@@ -612,75 +793,113 @@ class RetargetWindow(QtWidgets.QDialog):
         return panel
 
     def _mapping_panel(self):
-        group = QtWidgets.QGroupBox("关键链对应 · 左侧是源，右侧是目标")
+        group = QtWidgets.QWidget()
+        group.setMinimumWidth(0)
         layout = QtWidgets.QVBoxLayout(group)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(button("自动匹配建议", self.suggest))
-        row.addWidget(button("编辑整条链", self.edit_chain))
-        row.addWidget(button("添加自定义链", self.add_chain))
-        row.addWidget(button("移除当前链", self.remove_chain))
+        self.edit_chain_button = button("编辑整条链", self.edit_chain)
+        row.addWidget(self.edit_chain_button)
+        row.addWidget(button("拾取源选择", lambda: self.pick("source"), "将 Max 当前选择填入当前链源侧；两侧分别按根到末端排列。"))
+        row.addWidget(button("拾取目标选择", lambda: self.pick("target")))
+        row.addWidget(button("匹配建议", self.suggest))
+        row.addWidget(action_menu("更多链操作", (
+            ("当前链高级设置…", lambda: self.show_settings(1), "调整此链映射模式、权重及局部旋转偏移。"),
+            ("添加自定义链", self.add_chain, ""),
+            ("移除当前链", self.remove_chain, ""),
+            ("镜像到对侧链…", self.mirror_suggestion, "按左右名称生成候选，确认后应用；不执行几何镜像。"),
+            (None, None, ""),
+            ("清空源映射", lambda: self.assign("source", []), ""),
+            ("清空目标映射", lambda: self.assign("target", []), ""))))
+        self.chain_filter = QtWidgets.QLineEdit()
+        self.chain_filter.setMinimumWidth(80)
+        self.chain_filter.setPlaceholderText("筛选链 / 节点")
+        self.chain_filter.setToolTip("按完整关键链名、源或目标节点名筛选；整行同步显示。")
+        self.chain_filter.textChanged.connect(self.filter_chains)
+        row.addWidget(self.chain_filter, 1)
         layout.addLayout(row)
         self.mapping = QtWidgets.QTableWidget(0, 3)
+        self.mapping.setMinimumSize(0, 80)
         self.mapping.setHorizontalHeaderLabels(["源骨架 · 根 → 末端", "关键链 / 状态", "目标骨架 · 根 → 末端"])
         self.mapping.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.mapping.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.mapping.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.mapping.setWordWrap(False)
+        self.mapping.setTextElideMode(QtCore.Qt.ElideMiddle)
+        self.mapping.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.mapping.verticalHeader().hide()
-        self.mapping.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        self.mapping.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        self.mapping.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+        header = self.mapping.horizontalHeader()
+        header.setMinimumSectionSize(60)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Interactive)
+        header.resizeSection(1, 175)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
         self.mapping.itemDoubleClicked.connect(lambda _: self.edit_chain())
         self.mapping.itemSelectionChanged.connect(self.chain_changed)
         layout.addWidget(self.mapping, 1)
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(button("拾取源选择", lambda: self.pick("source"), "将 Max 当前选择填入源侧，自动排除非源节点。"))
-        row.addWidget(button("清空源", lambda: self.assign("source", [])))
-        row.addStretch()
-        row.addWidget(button("镜像到对侧链", self.mirror_suggestion, "以左右名称生成对侧链候选；需确认，不执行几何镜像。"))
-        row.addStretch()
-        row.addWidget(button("清空目标", lambda: self.assign("target", [])))
-        row.addWidget(button("拾取目标选择", lambda: self.pick("target")))
-        layout.addLayout(row)
         return group
 
     def _visibility_panel(self):
-        group = QtWidgets.QGroupBox("视口显隐 · 仅作用于已读取的两侧节点")
-        layout = QtWidgets.QHBoxLayout(group)
-        for label, action in (("显示源", "show_source"), ("隐藏源", "hide_source"),
-                              ("显示目标", "show_target"), ("隐藏目标", "hide_target"),
-                              ("显示全部", "show_all"), ("仅看源", "only_source"),
-                              ("仅看目标", "only_target"), ("仅看当前链", "only_chain")):
-            layout.addWidget(button(label, lambda _=False, a=action: self.visibility(a)))
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QtWidgets.QLabel("视口"))
+        self.visibility_buttons = {}
+        for label, action in (("仅看源", "only_source"), ("仅看目标", "only_target"), ("显示全部", "show_all")):
+            entry = button(label, lambda _=False, a=action: self.visibility(a))
+            self.visibility_buttons[action] = entry
+            layout.addWidget(entry)
+        self.restore_visibility_button = button("恢复显隐", self.restore_visibility,
+                                                "精确恢复会话影响过的节点，不揭开共层无关对象。")
+        layout.addWidget(self.restore_visibility_button)
+        layout.addWidget(action_menu("更多显隐", tuple(
+            (label, lambda _=False, a=action: self.visibility(a), "仅作用于已读取的两侧节点。")
+            for label, action in (("显示源", "show_source"), ("隐藏源", "hide_source"),
+                                  ("显示目标", "show_target"), ("隐藏目标", "hide_target"),
+                                  ("仅看当前链", "only_chain")))))
         layout.addStretch()
-        layout.addWidget(button("恢复进入前状态", self.restore_visibility, "精确恢复会话影响过的节点；不使用 Unhide All，不揭开共层无关对象。"))
-        return group
+        return widget
 
     def _basic_panel(self):
         widget = QtWidgets.QWidget()
-        grid = QtWidgets.QGridLayout(widget)
+        layout = QtWidgets.QVBoxLayout(widget)
+        reference = QtWidgets.QGroupBox("1 · 两侧参考姿态")
+        grid = QtWidgets.QGridLayout(reference)
         self.reference_frame = integer(initial=self.current_frame())
         self.reference_frame.setToolTip("参考姿态以明确的整数帧记录；预览使用当前完整时间（包含子帧）。")
-        grid.addWidget(QtWidgets.QLabel("参考姿态帧"), 0, 0)
-        grid.addWidget(self.reference_frame, 0, 1)
-        grid.addWidget(button("取当前帧", lambda: self.reference_frame.setValue(self.current_frame())), 0, 2)
+        frame_row = QtWidgets.QHBoxLayout()
+        frame_row.addWidget(QtWidgets.QLabel("参考姿态帧"))
+        frame_row.addWidget(self.reference_frame)
+        frame_row.addWidget(button("取当前帧", lambda: self.reference_frame.setValue(self.current_frame())))
+        frame_row.addStretch()
+        grid.addLayout(frame_row, 0, 0, 1, 2)
         self.source_ref = button("记录源参考姿态", lambda: self.reference("source"))
         self.target_ref = button("记录目标参考姿态", lambda: self.reference("target"))
-        grid.addWidget(self.source_ref, 0, 3)
-        grid.addWidget(self.target_ref, 0, 4)
+        grid.addWidget(self.source_ref, 1, 0)
+        grid.addWidget(self.target_ref, 1, 1)
+        self.reference_info = help_label("参考姿态独立记录，不需要在场景里强制摆成同一姿势。")
+        grid.addWidget(self.reference_info, 2, 0, 1, 2)
+        layout.addWidget(reference)
+        motion = QtWidgets.QGroupBox("2 · 根运动与位移比例")
+        form = QtWidgets.QFormLayout(motion)
         self.root_mode = NoWheelComboBox()
         for label, key in (("全局位移与旋转", "global"), ("原地（固定根位置）", "in_place"), ("水平位移与朝向", "horizontal")):
             self.root_mode.addItem(label, key)
         self.root_mode.setToolTip("根与骨盆分别映射。根运动仅控制根链；目标子骨默认保留自身参考骨长。")
-        grid.addWidget(QtWidgets.QLabel("根运动"), 1, 0)
-        grid.addWidget(self.root_mode, 1, 1, 1, 2)
+        form.addRow("根运动", self.root_mode)
         self.scale_mode = NoWheelComboBox()
         for label, key in (("按参考骨架比例", "auto"), ("不缩放位移", "none"), ("手动比例", "manual")):
             self.scale_mode.addItem(label, key)
         self.scale = decimal(0.001, 1000, 1)
         self.scale.setEnabled(False)
-        grid.addWidget(self.scale_mode, 1, 3)
-        grid.addWidget(self.scale, 1, 4)
+        scale_row = QtWidgets.QHBoxLayout()
+        scale_row.addWidget(self.scale_mode, 1)
+        scale_row.addWidget(self.scale)
+        form.addRow("位移比例", scale_row)
+        layout.addWidget(motion)
+        output = QtWidgets.QGroupBox("3 · 烘焙范围与目标输出")
+        output_layout = QtWidgets.QVBoxLayout(output)
         self.start = integer(initial=0)
         self.end = integer(initial=100)
         try:
@@ -693,31 +912,23 @@ class RetargetWindow(QtWidgets.QDialog):
         range_row = QtWidgets.QHBoxLayout()
         for label, control in (("从", self.start), ("到", self.end), ("步长", self.step)):
             range_row.addWidget(QtWidgets.QLabel(label))
-            range_row.addWidget(control)
-        grid.addWidget(QtWidgets.QLabel("烘焙范围"), 2, 0)
-        grid.addLayout(range_row, 2, 1, 1, 2)
+            range_row.addWidget(control, 1)
+        output_layout.addLayout(range_row)
         self.output_mode = NoWheelComboBox()
         self.output_mode.addItem("已有目标关键帧时拒绝（推荐）", "reject_existing")
         self.output_mode.addItem("覆盖区间内关键帧", "replace_range")
         self.output_mode.addItem("Biped 新动画层（保留基础轨）", "new_layer")
         self.output_mode.setToolTip("覆盖区间保留区间外键，但边界切线可能影响邻接区间；请先保存场景。")
-        grid.addWidget(self.output_mode, 2, 3, 1, 2)
-        self.reference_info = QtWidgets.QLabel("参考姿态独立记录，不需要在场景里强制摆成同一姿势。")
-        self.reference_info.setObjectName("help")
-        self.reference_info.setWordWrap(True)
-        grid.addWidget(self.reference_info, 3, 0, 1, 5)
-        boundary_info = QtWidgets.QLabel("烘焙在范围前后各加 1 帧原姿态保护键；边界附近插值可能变化。")
-        boundary_info.setObjectName("help")
-        boundary_info.setWordWrap(True)
-        grid.addWidget(boundary_info, 4, 0, 1, 5)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(3, 1)
+        output_layout.addWidget(self.output_mode)
+        output_layout.addWidget(help_label("烘焙在范围前后各加 1 帧原姿态保护键；边界附近插值可能变化。"))
+        layout.addWidget(output)
+        layout.addStretch()
         return widget
 
     def _advanced_panel(self):
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
-        self.override_label = QtWidgets.QLabel("先选中一条关键链")
+        self.override_label = ElidedLabel("先选中一条关键链")
         grid.addWidget(self.override_label, 0, 0, 1, 4)
         self.mapping_mode = mapping_mode_combo()
         grid.addWidget(QtWidgets.QLabel("链映射模式"), 1, 0)
@@ -742,7 +953,7 @@ class RetargetWindow(QtWidgets.QDialog):
             angles.addWidget(spin)
             self.rotation_offsets.append(spin)
         grid.addLayout(angles, 3, 1, 1, 4)
-        note = QtWidgets.QLabel("重采样：两侧连续链各至少两节点，首尾语义对应，按参考世界弧长分配旋转；重采样时平移权重须为 0。根 / 骨盆始终单对。\nFK、IK / 足底接触保持、Biped / CAT 分别适配验收；未验证能力不因 FK 可用而视为支持。")
+        note = help_label("重采样：两侧连续链各至少两节点，首尾语义对应，按参考世界弧长分配旋转；重采样时平移权重须为 0。根 / 骨盆始终单对。\nFK、IK / 足底接触保持、Biped / CAT 分别适配验收；未验证能力不因 FK 可用而视为支持。")
         note.setWordWrap(True)
         note.setObjectName("help")
         grid.addWidget(note, 4, 0, 1, 5)
@@ -793,6 +1004,7 @@ class RetargetWindow(QtWidgets.QDialog):
         current = chain_id(self.current_chain()) if self.current_chain() else self._last_chain_id
         for side in ("source", "target"):
             self.side_panels[side].refresh(getattr(self.session, side))
+        self.capture_summary.setText(f"已读取：源 {len(self.session.source)} · 目标 {len(self.session.target)} 个节点")
         self.mapping.blockSignals(True)
         self.mapping.setRowCount(len(self.session.chains))
         selected_row = 0
@@ -806,7 +1018,13 @@ class RetargetWindow(QtWidgets.QDialog):
                      " → ".join(self.name("target", i) for i in target) or "— 请选择目标节点 —"]
             for column, text in enumerate(cells):
                 item = QtWidgets.QTableWidgetItem(text)
-                item.setToolTip(text)
+                details = text
+                if column in (0, 2):
+                    side, identities = ("source", source) if column == 0 else ("target", target)
+                    live = {node_id(node): node for node in getattr(self.session, side)}
+                    details = "\n\n".join("名称：" + self.name(side, identity) + "\n完整路径：" +
+                                             str(value(live.get(str(identity)), "path", identity)) for identity in identities) or text
+                item.setToolTip(details)
                 item.setData(QtCore.Qt.UserRole, chain_id(chain))
                 self.mapping.setItem(row, column, item)
             self.mapping.setRowHeight(row, 51)
@@ -842,7 +1060,7 @@ class RetargetWindow(QtWidgets.QDialog):
         self.status.setText(prefix + str(message))
         self.log(prefix + str(message))
         if error:
-            self.tabs.setCurrentIndex(2)
+            self.show_report()
 
     def run(self, label, callback, changed=False):
         if self._busy:
@@ -869,6 +1087,7 @@ class RetargetWindow(QtWidgets.QDialog):
         if self._busy:
             return
         self.scale.setEnabled(self.scale_mode.currentData() == "manual")
+        self._update_summary()
         try:
             was_valid = self._preview_valid
             self.invalidate_preview()
@@ -1040,7 +1259,7 @@ class RetargetWindow(QtWidgets.QDialog):
                 self.log(f"[{labels.get(severity, severity)}] {value(issue, 'message', str(issue))}")
             return issues
         result = self.run("预检完成，请查看具体问题。", action, changed=True)
-        self.tabs.setCurrentIndex(2)
+        self.show_report()
         return result
 
     def _apply_mapping_batch(self, suggestions):
@@ -1269,8 +1488,9 @@ class RetargetWindow(QtWidgets.QDialog):
             self.source_ref.setText("源参考来自预设")
             self.target_ref.setText("目标参考来自预设")
             self.reference_info.setText("已载入预设参考姿态。请核对骨架身份；重新绑定后应重新记录两侧参考姿态，再预检。")
+            self.reference_info.setToolTip(self.reference_info.text())
             self._set_unresolved(value(result, "unresolved", []))
-            self.tabs.setCurrentIndex(2)
+            self.show_report()
             return result
         result = self.run("已读取预设；请检查待重绑定节点和参考姿态，再预检。", action, changed=True)
         if result is not None and self._unresolved:
@@ -1328,6 +1548,7 @@ class RetargetWindow(QtWidgets.QDialog):
                 spin.setValue(settings[key])
                 spin.blockSignals(False)
         self._overrides = dict(settings.get("chain_overrides", {}))
+        self._update_summary()
 
     def closeEvent(self, event):
         if self._busy:

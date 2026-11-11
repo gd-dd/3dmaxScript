@@ -11,10 +11,10 @@ fn LXLegacyColor r g b = (dotNetClass "System.Drawing.Color").FromArgb r g b
 
 fn LXLegacyHeader panel title subtitle iconPath =
 (
-    panel.BackColor = LXLegacyColor 47 57 41
+    panel.BackColor = LXLegacyColor 232 241 222
     local picture = dotNetObject "System.Windows.Forms.PictureBox"
-    picture.Location = dotNetObject "System.Drawing.Point" 10 10
-    picture.Size = dotNetObject "System.Drawing.Size" 62 62
+    picture.Location = dotNetObject "System.Drawing.Point" 8 8
+    picture.Size = dotNetObject "System.Drawing.Size" 48 48
     picture.SizeMode = (dotNetClass "System.Windows.Forms.PictureBoxSizeMode").Zoom
     if doesFileExist iconPath do
     (
@@ -25,17 +25,17 @@ fn LXLegacyHeader panel title subtitle iconPath =
     panel.Controls.Add picture
     local heading = dotNetObject "System.Windows.Forms.Label"
     heading.Text = title
-    heading.Location = dotNetObject "System.Drawing.Point" 84 13
-    heading.Size = dotNetObject "System.Drawing.Size" 294 30
+    heading.Location = dotNetObject "System.Drawing.Point" 68 6
+    heading.Size = dotNetObject "System.Drawing.Size" 314 27
     heading.Font = dotNetObject "System.Drawing.Font" "Microsoft YaHei UI" 12.0 ((dotNetClass "System.Drawing.FontStyle").Bold)
-    heading.ForeColor = LXLegacyColor 194 222 155
+    heading.ForeColor = LXLegacyColor 64 91 43
     panel.Controls.Add heading
     local description = dotNetObject "System.Windows.Forms.Label"
     description.Text = subtitle
-    description.Location = dotNetObject "System.Drawing.Point" 85 47
-    description.Size = dotNetObject "System.Drawing.Size" 292 28
+    description.Location = dotNetObject "System.Drawing.Point" 69 34
+    description.Size = dotNetObject "System.Drawing.Size" 313 24
     description.Font = dotNetObject "System.Drawing.Font" "Microsoft YaHei UI" 8.5
-    description.ForeColor = LXLegacyColor 190 198 182
+    description.ForeColor = LXLegacyColor 83 101 67
     panel.Controls.Add description
 )
 
@@ -52,15 +52,20 @@ fn LXLegacyPrimary control caption =
 
 fn LXLegacyText control =
 (
-    control.BackColor = LXLegacyColor 39 44 37
-    control.ForeColor = LXLegacyColor 211 221 201
+    control.BackColor = LXLegacyColor 248 250 245
+    control.ForeColor = LXLegacyColor 48 61 42
     control.Font = dotNetObject "System.Drawing.Font" "Microsoft YaHei UI" 9.0
+    if (control.GetType()).FullName == "System.Windows.Forms.Label" do
+    (
+        control.AutoEllipsis = true
+        control.TextAlign = (dotNetClass "System.Drawing.ContentAlignment").MiddleLeft
+    )
 )
 
 fn LXLegacySection control =
 (
-    control.BackColor = LXLegacyColor 47 57 41
-    control.ForeColor = LXLegacyColor 194 222 155
+    control.BackColor = LXLegacyColor 232 241 222
+    control.ForeColor = LXLegacyColor 64 91 43
     control.Font = dotNetObject "System.Drawing.Font" "Microsoft YaHei UI" 9.0 ((dotNetClass "System.Drawing.FontStyle").Bold)
     control.TextAlign = (dotNetClass "System.Drawing.ContentAlignment").MiddleLeft
     control.Padding = dotNetObject "System.Windows.Forms.Padding" 8 0 0 0
@@ -69,8 +74,8 @@ fn LXLegacySection control =
 fn LXLegacySecondary control caption =
 (
     LXLegacyPrimary control caption
-    control.BackColor = LXLegacyColor 58 69 51
-    control.ForeColor = LXLegacyColor 220 229 210
+    control.BackColor = LXLegacyColor 230 237 222
+    control.ForeColor = LXLegacyColor 55 78 39
     control.Font = dotNetObject "System.Drawing.Font" "Microsoft YaHei UI" 9.0
 )
 
