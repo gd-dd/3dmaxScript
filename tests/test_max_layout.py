@@ -12,8 +12,8 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT.parent / 'acceptance/maxsuite-ui-2026-11-12'
-for key in ('TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA'):
+OUT = ROOT.parent / 'acceptance/max-connect-2026-11-19'
+for key in ('TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE'):
     directory = OUT / 'qa-environment' / key
     directory.mkdir(parents=True, exist_ok=True)
     os.environ[key] = str(directory)
@@ -86,6 +86,7 @@ class MaxLayoutTests(unittest.TestCase):
 
     def setUp(self):
         self.parent = QWidget()
+        self.parent.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         self.layout = QVBoxLayout(self.parent)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.handle = NativePanelHandle(source_tool(), OUT / 'unit-profile', self.parent)

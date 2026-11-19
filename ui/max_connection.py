@@ -118,6 +118,6 @@ def package_xml(tool_id,code):
             'UpgradeCode="'+code+'" ProductCode="'+code+'">\n'
             '  <CompanyDetails />\n'
             '  <Components Description="post-start-up scripts parts">\n'
-            '    <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2024" SeriesMax="2027" />\n'
+            '    <RuntimeRequirements OS="Win64" Platform="3ds Max" SeriesMin="2023" SeriesMax="2027" />\n'
             '    <ComponentEntry ModuleName="./loader.ms" />\n'
             '  </Components>\n</ApplicationPackage>\n')

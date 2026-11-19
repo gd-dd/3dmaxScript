@@ -45,7 +45,7 @@ assert root.attrib['Name']=='LX '+special+' connection'
 assert root.attrib['UpgradeCode']==root.attrib['ProductCode']=='{stable-id}'
 installed=ET.parse(folder/'PackageContents.xml').getroot()
 assert installed.find('Components/ComponentEntry').attrib['ModuleName']=='./loader.ms'
-assert installed.find('Components/RuntimeRequirements').attrib==dict(OS='Win64',Platform='3ds Max',SeriesMin='2024',SeriesMax='2027')
+assert installed.find('Components/RuntimeRequirements').attrib==dict(OS='Win64',Platform='3ds Max',SeriesMin='2023',SeriesMax='2027')
 assert max_connection.mxs_string(ROOT/'bridge/LXMaxBridge.ms') in (folder/'loader.ms').read_text('utf-8-sig')
 (OUT/'result.json').write_text(json.dumps(dict(ok=True,scope='source loader; xml imports blocked; not frozen EXE',ribbon=True,attributes=True,chinesePath=True),indent=2),encoding='utf-8')
 print('PASS blocked xml native loader, ribbon button, Chinese path, XML attribute roundtrip, invalid character rejection')

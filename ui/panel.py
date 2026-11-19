@@ -1,12 +1,14 @@
 """Declarative session controls backed by a tool-owned, opt-in stdio provider."""
 import json
+import re
 import uuid
 from pathlib import Path
-from PySide6.QtCore import QProcess, QTimer, Qt
+from PySide6.QtCore import QProcess, QTimer, Qt, QSize, QRect, QPoint
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QFrame, QLineEdit, QFileDialog, QTreeWidget, QTreeWidgetItem, QHeaderView)
-from PySide6.QtWidgets import QPushButton, QScrollArea, QSizePolicy, QComboBox
-from PySide6.QtGui import QPixmap, QFont
+from PySide6.QtWidgets import (QPushButton, QScrollArea, QSizePolicy, QComboBox,
+    QListView, QStyledItemDelegate, QStyleOptionViewItem, QStyleOptionComboBox, QStyle, QStylePainter)
+from PySide6.QtGui import QPixmap, QFont, QPalette, QGuiApplication, QColor
 from .transport import HiddenProcess
 from . import max_connection
 from PySide6.QtWidgets import QApplication
@@ -20,7 +22,96 @@ def plain(text, style=''):
     return label
 
 
+SESSION_LINES=Qt.ItemDataRole.UserRole+1
+
+
+def session_lines(session):
+    """Separate identity from scene text; accept pre-version provider records."""
+    title=session.get('title') or '未命名 Max 窗口'
+    detail=session.get('detail','');scene=session.get('scene') or title
+    version=str(session.get('version') or '')
+    if not version:
+        match=re.search(r'(?:3ds\s*max|max)\s*(20\d{2}(?:\.\d+)*)',title+' '+detail,re.I)
+        if match:version=match.group(1)
+    version=('3ds Max '+version) if version and not re.search(r'max',version,re.I) else version or '3ds Max · 版本未知'
+    pid=str(session.get('pid') or '')
+    if not pid:
+        match=re.search(r'\bPID\s*[:：]?\s*(\d+)',detail,re.I)
+        if match:pid=match.group(1)
+    state={'ready':'已连接','connecting':'正在连接','busy':'忙碌 / 未响应','unconnected':'尚未连接'}[session['state']]
+    identity=version+' · '+('PID '+pid if pid else 'PID 未知')+' · '+state
+    # Keep the file name prominent, with the original full path in line three.
+    name=scene.replace('\\','/').rsplit('/',1)[-1] if '/' in scene or '\\' in scene else scene
+    return [name,identity,scene if scene!=name else detail or title]
+
+
+class SessionDelegate(QStyledItemDelegate):
+    def sizeHint(self,option,index):
+        lines=index.data(SESSION_LINES) or [index.data(Qt.ItemDataRole.DisplayRole) or '']
+        return QSize(440,option.fontMetrics.height()*len(lines)+18)
+
+    def paint(self,painter,option,index):
+        opt=QStyleOptionViewItem(option);self.initStyleOption(opt,index);opt.text=''
+        style=opt.widget.style() if opt.widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem,opt,painter,opt.widget)
+        lines=index.data(SESSION_LINES) or [index.data(Qt.ItemDataRole.DisplayRole) or '']
+        rect=option.rect.adjusted(10,8,-10,-8);height=option.fontMetrics.height()
+        color=QColor('#304927') if option.state&QStyle.StateFlag.State_Selected else option.palette.color(QPalette.ColorRole.Text)
+        painter.save();painter.setClipRect(option.rect);painter.setPen(color)
+        for row,line in enumerate(lines):
+            text=option.fontMetrics.elidedText(line,Qt.TextElideMode.ElideMiddle,rect.width())
+            painter.drawText(QRect(rect.x(),rect.y()+row*height,rect.width(),height),Qt.AlignmentFlag.AlignVCenter,text)
+        painter.restore()
+
+
 class SessionChoice(QComboBox):
+    def __init__(self,parent=None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
+        self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(12);self.setMinimumWidth(0)
+        self.setAccessibleName('选择目标 Max 窗口')
+        view=QListView(self);view.setItemDelegate(SessionDelegate(view))
+        view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        view.setStyleSheet('QListView {background:white;color:#30442c;border:1px solid #d9e4cc;} QListView::item:selected {background:#e7f0d8;color:#304927;}')
+        self.setView(view);self.setMaxVisibleItems(7)
+
+    def minimumSizeHint(self):return QSize(160,self.fontMetrics().height()*2+22)
+    def sizeHint(self):return QSize(360,self.minimumSizeHint().height())
+
+    def popup_geometry(self,available=None):
+        anchor=self.mapToGlobal(QPoint(0,self.height()))
+        screen=QGuiApplication.screenAt(anchor) or self.screen()
+        area=QRect(available if available is not None else screen.availableGeometry()).adjusted(8,8,-8,-8)
+        width=max(1,min(max(self.width(),460),760,area.width()))
+        rows=min(self.count(),self.maxVisibleItems())
+        height=min(max(1,rows)*(self.fontMetrics().height()*3+18)+4,max(1,area.height()))
+        x=max(area.left(),min(anchor.x(),area.right()-width+1))
+        y=anchor.y()
+        if y+height>area.bottom()+1:y=self.mapToGlobal(QPoint(0,0)).y()-height
+        y=max(area.top(),min(y,area.bottom()-height+1))
+        return QRect(x,y,width,height)
+
+    def showPopup(self):
+        bounds=self.popup_geometry()
+        self.view().setFixedWidth(max(1,bounds.width()-2))
+        super().showPopup()
+        popup=self.view().window()
+        popup.setMinimumSize(bounds.size());popup.setMaximumSize(bounds.size())
+        popup.setGeometry(bounds)
+
+    def paintEvent(self,event):
+        option=QStyleOptionComboBox();self.initStyleOption(option);option.currentText=''
+        painter=QStylePainter(self);painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox,option)
+        rect=self.style().subControlRect(QStyle.ComplexControl.CC_ComboBox,option,QStyle.SubControl.SC_ComboBoxEditField,self).adjusted(3,0,-3,0)
+        lines=(self.currentData(SESSION_LINES) or [self.currentText()])[:2]
+        height=self.fontMetrics().height();top=rect.center().y()-len(lines)*height//2
+        painter.setClipRect(rect);painter.setPen(self.palette().color(QPalette.ColorRole.Text))
+        for row,line in enumerate(lines):
+            text=self.fontMetrics().elidedText(line,Qt.TextElideMode.ElideMiddle,rect.width())
+            painter.drawText(QRect(rect.x(),top+row*height,rect.width(),height),Qt.AlignmentFlag.AlignVCenter,text)
+
     def wheelEvent(self,event):
         # Scrolling the panel must not silently change the command target.
         event.ignore()
@@ -110,9 +201,9 @@ class MaxPanel(QWidget):
         connections,box=self.section('02','连接并选择窗口');outer.addWidget(connections)
         box.itemAt(0).widget().hide()
         row=QHBoxLayout();self.counter=plain('02  连接并选择窗口','color:#507522;font-weight:600');row.addWidget(self.counter,1)
-        self.connect_button=self.button('连接 / 刷新',lambda:self.command('hello'));row.addWidget(self.connect_button)
+        self.connect_button=self.button('连接 / 刷新',self.refresh_connections);row.addWidget(self.connect_button)
         box.addLayout(row)
-        self.empty=plain('新开的 Max 自动连接；已有窗口可刷新后选择。','color:#68775d;padding:4px 0')
+        self.empty=plain('支持 Max 2023–2027。首次运行连接脚本一次，之后点击「连接 / 刷新」即可按窗口和版本自动匹配。','color:#68775d;padding:4px 0')
         box.addWidget(self.empty)
         self.list=QTreeWidget();self.list.setHeaderLabels(['Max 窗口','状态']);self.list.setRootIsDecorated(False)
         self.list.setMinimumWidth(0);self.list.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
@@ -121,10 +212,7 @@ class MaxPanel(QWidget):
         self.list.header().setSectionResizeMode(1,QHeaderView.ResizeMode.ResizeToContents)
         self.list.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.list.currentItemChanged.connect(self.selection_changed)
-        self.session_choice=SessionChoice();self.session_choice.setMinimumWidth(0)
-        self.session_choice.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
-        self.session_choice.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.session_choice.setMinimumContentsLength(1);self.session_choice.setMinimumHeight(32)
+        self.session_choice=SessionChoice()
         self.session_choice.addItem('请选择 Max 窗口',None)
         self.session_choice.currentIndexChanged.connect(self.choose_session);box.addWidget(self.session_choice)
         self.connection_toggle=self.button('连接设置与首次连接 · 展开',self.toggle_connection)
@@ -138,7 +226,8 @@ class MaxPanel(QWidget):
         self.path.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
         options.addWidget(self.path)
         options.addWidget(self.button('选择 Max 程序…',self.pick_application),alignment=Qt.AlignmentFlag.AlignLeft)
-        options.addWidget(plain('首次接入已有 Max：复制连接脚本路径，在目标 Max 的「脚本 → 运行脚本」执行一次，然后刷新列表。','color:#68775d;font-size:12px'))
+        options.addWidget(plain('连接支持 Max 2023–2027，版本按各个窗口识别，与上方新开程序路径无关。首次接入或升级旧版连接桥时，在目标 Max 的「脚本 → 运行脚本」执行一次新版连接脚本；之后刷新即可自动匹配。','color:#68775d;font-size:12px'))
+        options.addWidget(plain('绑定蒙皮、飘带、重定向界面需要 Max 2025 或更新版本；连接及其他六款脚本不受此界面版本限制。','color:#68775d;font-size:12px'))
         options.addWidget(self.button('复制首次连接脚本',self.connection_help))
         options.addWidget(self.button('以后启动时自动连接',self.install_connection))
         self.connection_note=plain('','color:#507522;font-size:12px');self.connection_note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -282,7 +371,9 @@ class MaxPanel(QWidget):
                     self.fail(str(value.get('error','操作失败')))
                     continue
                 self.apply_response(value)
-                if op=='hello' and not value.get('events'):self.status.setText('连接列表已刷新。')
+                if op=='hello' and not value.get('events'):
+                    ready=sum(s.get('state')=='ready' for s in self.sessions.values())
+                    self.status.setText('扫描完成：%d 个 Max，%d 个已连接。请选择目标窗口；未连接窗口可再次刷新或展开首次连接设置。'%(len(self.sessions),ready))
             except (ValueError,KeyError,TypeError) as error:self.fail(str(error))
 
     def apply_response(self,value):
@@ -293,6 +384,8 @@ class MaxPanel(QWidget):
             if not isinstance(item,dict) or not isinstance(item.get('id'),str) or item['id'] in seen or item.get('state') not in ('ready','connecting','busy','unconnected'):raise ValueError('后台会话无效')
             seen.add(item['id'])
             if any(not isinstance(item.get(k,''),str) or len(item.get(k,''))>4096 for k in ('id','title','detail','status')):raise ValueError('后台会话文字无效')
+            if any(not isinstance(item.get(k,''),str) or len(item.get(k,''))>4096 for k in ('version','scene')):raise ValueError('后台版本或场景文字无效')
+            if 'pid' in item and (type(item['pid']) not in (int,str) or not str(item['pid']).isdigit()):raise ValueError('后台进程编号无效')
         pending=value.get('pending',[])
         if not isinstance(pending,list) or len(pending)>100:raise ValueError('后台待处理列表无效')
         if any(not isinstance(p,dict) or not isinstance(p.get('sessionId'),str) or p.get('toolId') not in (*self.buttons,'rig') for p in pending):raise ValueError('后台待处理操作无效')
@@ -304,8 +397,9 @@ class MaxPanel(QWidget):
             state={'ready':'● 已连接','connecting':'◌ 正在连接','busy':'○ 忙碌 / 未响应','unconnected':'○ 尚未连接'}[s['state']]
             item=QTreeWidgetItem([s.get('title','窗口')+'\n'+s.get('detail',''),state]);item.setData(0,Qt.ItemDataRole.UserRole,s['id'])
             item.setToolTip(0,s.get('title','')+'\n'+s.get('detail',''));self.list.addTopLevelItem(item)
-            self.session_choice.addItem(state+' · '+s.get('title','Max')+' · '+s.get('detail',''),s['id'])
-            self.session_choice.setItemData(self.session_choice.count()-1,item.toolTip(0),Qt.ItemDataRole.ToolTipRole)
+            lines=session_lines(s);self.session_choice.addItem('\n'.join(lines[:2]),s['id'])
+            self.session_choice.setItemData(self.session_choice.count()-1,lines,SESSION_LINES)
+            self.session_choice.setItemData(self.session_choice.count()-1,'\n'.join(lines)+'\n'+item.toolTip(0),Qt.ItemDataRole.ToolTipRole)
             if s['id']==selected:self.list.setCurrentItem(item)
         self.session_choice.blockSignals(False)
         self.list.blockSignals(False);self.selection_changed(self.list.currentItem())
@@ -317,17 +411,21 @@ class MaxPanel(QWidget):
         if not isinstance(events,list) or any(not isinstance(e,str) for e in events):raise ValueError('后台事件无效')
         if events:self.status.setText('\n'.join(events[-3:])[:2000])
 
+    def refresh_connections(self):
+        self.status.setText('正在扫描已打开的 Max，识别版本并尝试自动连接已首次接入的窗口…')
+        self.command('hello')
+
     def install_connection(self):
         try:
             folder=max_connection.install('max-tools',self.context.resource('bridge/LXMaxBridge.ms'))
-            self.connection_note.setText('已安装自动连接。以后启动 Max 会自动连接；当前已打开的窗口需运行一次连接脚本。\n'+str(folder))
+            self.connection_note.setText('已安装自动连接。以后启动 Max 会加载连接桥，刷新即可匹配。尚未接入或仍运行旧版桥的窗口，只需运行一次新版连接脚本。\n'+str(folder))
         except Exception as error:self.fail(str(error))
 
     def connection_help(self):
         try:script=str(max_connection.connection_script('max-tools',self.context.resource('bridge/LXMaxBridge.ms')))
         except Exception as error:self.fail(str(error));return
         QApplication.clipboard().setText(script)
-        self.connection_note.setText('路径已复制。在目标 Max 的「脚本 → 运行脚本」中执行，再点击连接 / 刷新。\n'+script)
+        self.connection_note.setText('路径已复制。在目标 Max 的「脚本 → 运行脚本」中执行一次新版连接脚本；之后点击连接 / 刷新即可自动匹配。\n'+script)
 
     def choose_session(self,index):
         identity=self.session_choice.itemData(index)
@@ -343,12 +441,13 @@ class MaxPanel(QWidget):
         session=self.sessions.get(self.active_id,{})
         self.session_choice.blockSignals(True)
         self.session_choice.setCurrentIndex(max(0,self.session_choice.findData(self.active_id)))
-        self.session_choice.setToolTip((session.get('title','')+'\n'+session.get('detail','')).strip())
+        description='\n'.join(session_lines(session))+'\n'+session.get('detail','') if session else '请选择目标 Max 窗口'
+        self.session_choice.setToolTip(description);self.session_choice.setAccessibleDescription(description)
         self.session_choice.blockSignals(False)
         if not session:target='请先选择一个已连接窗口。'
         else:
             target='目标：'+(session.get('detail') or session.get('title','Max'))
-            if session.get('state')=='unconnected':target+='\n尚未连接，请展开连接设置运行首次连接脚本。'
+            if session.get('state')=='unconnected':target+='\n尚未连接，请展开首次连接设置运行一次新版连接脚本；之后刷新自动匹配。'
             elif session.get('state')!='ready':target+='\n等待窗口恢复连接后即可打开工具。'
         self.target.setText(target)
         for identity,button in self.buttons.items():button.setEnabled(session.get('state')=='ready' and (self.active_id,identity) not in self.pending)

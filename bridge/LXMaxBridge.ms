@@ -2,13 +2,23 @@
 global LXMaxBridgeTimer
 global LXMaxBridgeRoot
 global LXMaxBridgeSession
+global LXMaxBridgeUserRoot
 global LXMaxBridgeBusy = false
 global LXMaxBridgeRequestedUserRoot
 global LXMaxBridgeSource
 global LXRigPayload
 global LXRigResponse
 global LXRigResultPath
-try (if LXMaxBridgeTimer != undefined do LXMaxBridgeTimer.Stop()) catch()
+try
+(
+    local previousTimer = LXMaxBridgeTimer
+    if previousTimer != undefined do
+    (
+        previousTimer.Stop()
+        dotNet.removeAllEventHandlers previousTimer
+        previousTimer.Dispose()
+    )
+) catch()
 LXMaxBridgeSource = getSourceFileName()
 LXMaxBridgeRoot = (dotNetClass "System.IO.Path").GetFullPath ((getFilenamePath LXMaxBridgeSource) + "..")
 fileIn (LXMaxBridgeRoot + "\\bridge\\rig_context.ms") quiet:true
@@ -30,6 +40,7 @@ fileIn (LXMaxBridgeRoot + "\\bridge\\rig_context.ms") quiet:true
     local ioPath = dotNetClass "System.IO.Path"
     if not (ioPath.IsPathRooted userRoot) or (ioPath.GetPathRoot userRoot).count < 3 do throw "Invalid explicit Max session root"
     userRoot = ioPath.GetFullPath userRoot
+    LXMaxBridgeUserRoot = userRoot
     LXMaxBridgeSession = userRoot + "\\sessions\\" + (proc.Id as string) + "-" + birth
 )
 (dotNetClass "System.IO.Directory").CreateDirectory LXMaxBridgeSession
@@ -52,10 +63,76 @@ fn LXMaxBridgeHeartbeat =
 (
     local scene = maxFilePath + maxFileName
     if scene == "" do scene = "Untitled"
-    LXMaxBridgeWrite (LXMaxBridgeSession + "\\info") ("1\n" + (LXMaxBridgeEncode LXMaxBridgeRoot) + "\n" + (LXMaxBridgeEncode scene))
+    local year = (((maxVersion())[1] / 1000) as integer) + 1998
+    LXMaxBridgeWrite (LXMaxBridgeSession + "\\info") ("2\n" + (LXMaxBridgeEncode LXMaxBridgeRoot) + "\n" + (LXMaxBridgeEncode scene) + "\n" + (year as string))
+)
+fn LXMaxBridgeConnect =
+(
+    -- Reconnect only between safe idle points, never inside a brush/undo edit.
+    if theHold.Holding() do return false
+    local io = dotNetClass "System.IO.File"
+    local pathClass = dotNetClass "System.IO.Path"
+    local proc = (dotNetClass "System.Diagnostics.Process").GetCurrentProcess()
+    local convert = dotNetClass "System.Convert"
+    local started = proc.StartTime
+    local utc = started.ToUniversalTime()
+    local birth = convert.ToString utc.Ticks
+    local requests = getFiles (LXMaxBridgeSession + "\\*.connect")
+    for request in requests do
+    (
+        local targetBridge = undefined
+        local previousBridge = pathClass.Combine LXMaxBridgeRoot "bridge\\LXMaxBridge.ms"
+        local previousUserRoot = LXMaxBridgeUserRoot
+        local switchStarted = false
+        try
+        (
+            local lines = io.ReadAllLines request
+            if lines.count != 6 or lines[1] != "LXCONNECT1" do throw "无效连接请求"
+            if lines[2] != (proc.Id as string) or lines[3] != birth do throw "连接目标已变化"
+            if (dotNetClass "System.DateTime").UtcNow.Ticks > (dotNetClass "System.Int64").Parse lines[4] do throw "连接请求已过期"
+            local targetRoot = (dotNetClass "System.Text.Encoding").UTF8.GetString (convert.FromBase64String lines[5])
+            if not (pathClass.IsPathRooted targetRoot) do throw "连接目录不是绝对路径"
+            targetRoot = pathClass.GetFullPath targetRoot
+            targetBridge = pathClass.Combine targetRoot "bridge\\LXMaxBridge.ms"
+            if not (io.Exists (pathClass.Combine targetRoot ".lxtool\\manifest.json")) do throw "目标不是完整工具包"
+            local stream = io.OpenRead targetBridge
+            local sha = (dotNetClass "System.Security.Cryptography.SHA256").Create()
+            local hash = undefined
+            try (hash = (dotNetClass "System.BitConverter").ToString (sha.ComputeHash stream)) catch (stream.Close();sha.Dispose();throw())
+            stream.Close();sha.Dispose()
+            hash = substituteString (toLower hash) "-" ""
+            if hash != lines[6] do throw "目标连接脚本摘要不符"
+            LXMaxBridgeRequestedUserRoot = LXMaxBridgeUserRoot
+            switchStarted = true
+            fileIn targetBridge quiet:true
+            io.Delete request
+            -- The new bridge has already published a heartbeat for this PID.
+            return true
+        )
+        catch
+        (
+            local errorText = getCurrentException() as string
+            if switchStarted do
+            (
+                try
+                (
+                    LXMaxBridgeRequestedUserRoot = previousUserRoot
+                    fileIn previousBridge quiet:true
+                )
+                catch (errorText += "\n恢复原连接失败：" + (getCurrentException() as string))
+            )
+            try (io.WriteAllText (request + ".result") errorText) catch()
+            try (io.Delete request) catch()
+        )
+    )
+    false
 )
 fn LXMaxBridgeRun id =
 (
+    local year = (((maxVersion())[1] / 1000) as integer) + 1998
+    if year < 2023 or year > 2027 do throw "连接支持 3ds Max 2023–2027"
+    if year < 2025 and (findItem #("rig-workbench", "ribbon", "retarget") id) > 0 do
+        throw "此工具窗口需要 PySide6（Max 2025及以上）；2023/2024连接及六款MAXScript工具可用"
     local script = case id of
     (
         "animation-bake": "动画烘焙工具.ms"
@@ -75,6 +152,7 @@ fn LXMaxBridgeRun id =
 fn LXMaxBridgeTick =
 (
     if LXMaxBridgeBusy do return undefined
+    if LXMaxBridgeConnect() do return undefined
     LXMaxBridgeBusy = true
     try
     (

@@ -9,11 +9,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.Threading;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace LXMaxTools {
 public sealed class Instance {
-    public int Pid; public long Birth; public string Title, Exe, Session, Scene, State;
+    public int Pid, Version, ConnectionProtocol; public long Birth; public string Title, Exe, Session, Scene, State;
     public string Key { get { return Pid + "-" + Birth; } }
     public bool Connected { get { return State == "已连接"; } }
 }
@@ -38,6 +39,27 @@ public static class Engine {
     public static string Decode(string s) { return Encoding.UTF8.GetString(Convert.FromBase64String(s)); }
     public static string Label(string id) { return Plugins.ContainsKey(id)?Path.GetFileNameWithoutExtension(Plugins[id]):id; }
     public static bool SamePath(string a,string b) { return String.Equals(Path.GetFullPath(a).TrimEnd('\\'),Path.GetFullPath(b).TrimEnd('\\'),StringComparison.OrdinalIgnoreCase); }
+    public static int DetectVersion(int major,string product,string path) {
+        // Binary metadata wins over a stale year in an installation directory.
+        if(major>=20&&major<=99)return major+1998;
+        foreach(var text in new [] {product ?? "",path ?? ""}) {
+            var match=Regex.Match(text,@"(?<!\d)(20[0-9]{2})(?!\d)");
+            if(match.Success)return Int32.Parse(match.Value);
+        }
+        return 0;
+    }
+    public static bool SupportedVersion(int year) {return year>=2023&&year<=2027;}
+    public static void ApplyHeartbeat(Instance instance,string[] data,bool stale) {
+        if(!((data.Length==3&&data[0]=="1")||(data.Length==4&&data[0]=="2")))throw new Exception("连接格式不匹配");
+        instance.ConnectionProtocol=Int32.Parse(data[0]);
+        if(instance.ConnectionProtocol==2) {
+            var declared=Int32.Parse(data[3]);
+            if(!SupportedVersion(declared)||(instance.Version!=0&&instance.Version!=declared))throw new Exception("连接信息与 Max 进程版本不匹配");
+            instance.Version=declared;
+        }
+        instance.Scene=Decode(data[2]);
+        instance.State=!SamePath(Decode(data[1]),Root)?"连接的是其他工具版本":stale?"忙碌 / 暂未响应":"已连接";
+    }
     public static void VerifyPackage() {
         var doc = new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(Root,".lxtool","manifest.json")));
         var files = (Dictionary<string,object>)doc["files"];
@@ -57,7 +79,11 @@ public static class Engine {
             var i=new Instance { Pid=p.Id,Title="正在启动 / 无可见窗口",Exe="",State="未连接" };
             try { i.Birth=p.StartTime.ToUniversalTime().Ticks;i.Title=String.IsNullOrWhiteSpace(p.MainWindowTitle)?i.Title:p.MainWindowTitle; }
             catch { i.State="无法读取进程";result.Add(i);continue; }
-            try { i.Exe=p.MainModule.FileName; } catch {}
+            try {
+                i.Exe=p.MainModule.FileName;
+                var version=FileVersionInfo.GetVersionInfo(i.Exe);
+                i.Version=DetectVersion(version.FileMajorPart,version.ProductName+" "+version.ProductVersion,i.Exe);
+            } catch {}
             i.Session=Path.Combine(UserRoot,"sessions",i.Key);
             var info=Path.Combine(i.Session,"info");
             try {
@@ -65,11 +91,10 @@ public static class Engine {
                     string[] data;
                     using(var stream=new FileStream(info,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete))
                     using(var reader=new StreamReader(stream,Encoding.UTF8))data=reader.ReadToEnd().Replace("\r","").Split('\n');
-                    if(data.Length!=3 || data[0]!="1") throw new Exception("连接格式不匹配");
-                    i.Scene=Decode(data[2]);
-                    i.State=!SamePath(Decode(data[1]),Root)?"连接的是其他工具版本":DateTime.UtcNow-File.GetLastWriteTimeUtc(info)>TimeSpan.FromSeconds(8)?"忙碌 / 暂未响应":"已连接";
+                    ApplyHeartbeat(i,data,DateTime.UtcNow-File.GetLastWriteTimeUtc(info)>TimeSpan.FromSeconds(8));
                 }
             } catch { i.State="连接信息暂不可读"; }
+            if(i.Version!=0&&!SupportedVersion(i.Version))i.State="不支持的 Max 版本（需要 2023–2027）";
             result.Add(i);
         }}
         return result.OrderBy(i=>i.Pid).ToList();
@@ -103,9 +128,29 @@ public static class Engine {
         File.WriteAllText(script,"global LXMaxBridgeRequestedUserRoot = "+MxsString(UserRoot)+"\nfileIn "+MxsString(Path.Combine(Root,"bridge","LXMaxBridge.ms"))+" quiet:true\n",new UTF8Encoding(true));
         return script;
     }
+    public static string ConnectionPayload(Instance target) {
+        var bridge=Path.Combine(Root,"bridge","LXMaxBridge.ms");
+        string digest;using(var sha=SHA256.Create())using(var stream=File.OpenRead(bridge))
+            digest=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").ToLowerInvariant();
+        return "LXCONNECT1\n"+target.Pid+"\n"+target.Birth+"\n"+DateTime.UtcNow.AddSeconds(12).Ticks+"\n"+
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(Root))+"\n"+digest;
+    }
+    public static string Connect(Instance target) {
+        var live=Scan().FirstOrDefault(i=>i.Key==target.Key);
+        if(live==null)throw new Exception("此 Max 已退出，未连接其他窗口。");
+        if(!SupportedVersion(live.Version))throw new Exception("无法识别或不支持此 Max 版本（需要 2023–2027）。");
+        if(live.ConnectionProtocol<2)throw new Exception("首次接入或旧连接器：请在此 Max 运行一次连接脚本。");
+        VerifyPackage();
+        var path=Path.Combine(live.Session,Guid.NewGuid().ToString("N")+".connect");
+        File.WriteAllText(path+".tmp",ConnectionPayload(live),new UTF8Encoding(false));File.Move(path+".tmp",path);
+        return path;
+    }
     public static Process Launch(string exe) {
         if(!File.Exists(exe)||!String.Equals(Path.GetFileName(exe),"3dsmax.exe",StringComparison.OrdinalIgnoreCase)) throw new Exception("请选择有效的 3dsmax.exe。");
         VerifyPackage();
+        var version=FileVersionInfo.GetVersionInfo(exe);
+        var year=DetectVersion(version.FileMajorPart,version.ProductName+" "+version.ProductVersion,exe);
+        if(year!=0&&!SupportedVersion(year))throw new Exception("请选择 3ds Max 2023–2027 的程序。");
         var start=new ProcessStartInfo(exe,"-U MAXScript \""+ConnectionScript()+"\"") { UseShellExecute=false,WorkingDirectory=Path.GetDirectoryName(exe) };
         foreach(var key in new [] {"QT_QPA_PLATFORM","QT_PLUGIN_PATH","QT_QPA_PLATFORM_PLUGIN_PATH","PYTHONHOME","PYTHONPATH"}) start.EnvironmentVariables.Remove(key);
         var started=Process.Start(start);
@@ -156,9 +201,11 @@ public static class Engine {
 }
 
 sealed class Request { public string Session,Tool,Path,Id; public DateTime Deadline; }
+sealed class ConnectionAttempt {public string Session,Path;public DateTime Deadline;}
 static class Provider {
     static JavaScriptSerializer json=new JavaScriptSerializer {MaxJsonLength=32*1024*1024};
     static List<Request> pending=new List<Request>();
+    static List<ConnectionAttempt> connecting=new List<ConnectionAttempt>();
     static string Field(Dictionary<string,object> d,string name){return d.ContainsKey(name)?d[name] as string:null;}
     static object Respond(Dictionary<string,object> request) {
         var op=Field(request,"op");var events=new List<string>();var results=new List<object>();
@@ -186,8 +233,34 @@ static class Provider {
             catch(IOException) {throw new Exception("Max 已接收此操作，无法中途取消；请等待回执。");}
             File.Delete(p.Path+".cancelled");pending.Remove(p);
             results.Add(new {requestId=p.Id,sessionId=p.Session,result=new {ok=false,error="尚未开始的操作已取消。"}});
-        } else if(op!="hello"&&op!="status")throw new Exception("未知操作。");
+        } else if(op=="hello") {
+            foreach(var instance in Engine.Scan()) {
+                if(instance.Connected||connecting.Any(c=>c.Session==instance.Key))continue;
+                if(!Engine.SupportedVersion(instance.Version)) {events.Add("PID "+instance.Pid+"：无法识别或不支持此版本（2023–2027）。");continue;}
+                if(instance.ConnectionProtocol<2) {
+                    events.Add("Max "+instance.Version+" · PID "+instance.Pid+"："+(instance.ConnectionProtocol==1?"需更新连接器":"首次接入")+"，在此窗口运行一次连接脚本后即可自动连接。");continue;
+                }
+                try {
+                    connecting.Add(new ConnectionAttempt{Session=instance.Key,Path=Engine.Connect(instance),Deadline=DateTime.UtcNow.AddSeconds(12)});
+                    events.Add("正在连接 Max "+instance.Version+" · PID "+instance.Pid+" 到当前工具版本…");
+                }catch(Exception error){events.Add("PID "+instance.Pid+"："+error.Message);}
+            }
+        } else if(op!="status")throw new Exception("未知操作。");
         var sessions=Engine.Scan();
+        foreach(var connection in connecting.ToArray()) {
+            var live=sessions.FirstOrDefault(i=>i.Key==connection.Session);
+            if(live!=null&&live.Connected) {
+                events.Add("Max "+live.Version+" · PID "+live.Pid+" 已连接当前工具版本。");connecting.Remove(connection);
+            }else if(File.Exists(connection.Path+".result")||live==null||DateTime.UtcNow>connection.Deadline) {
+                var message="连接超时，请等待 Max 空闲后刷新";
+                if(live==null)message="窗口已退出";
+                else if(File.Exists(connection.Path+".result"))message=File.ReadAllText(connection.Path+".result");
+                events.Add("PID "+connection.Session.Split('-')[0]+"："+message);connecting.Remove(connection);
+            }
+            if(!connecting.Contains(connection)) {
+                foreach(var path in new [] {connection.Path,connection.Path+".result"})try{File.Delete(path);}catch{}
+            }
+        }
         foreach(var p in pending.ToArray()) {
             if(File.Exists(p.Path+".result")) {
                 try {
@@ -205,8 +278,9 @@ static class Provider {
             }
         }
         return new {protocol=1,id=Field(request,"id"),ok=true,sessionRoot=Engine.UserRoot,applicationPath=Engine.DefaultExe(),events=events,results=results,
-            sessions=sessions.Select(i=>new {id=i.Key,title=String.IsNullOrEmpty(i.Scene)?i.Title:Path.GetFileName(i.Scene),
-                detail="PID "+i.Pid+" · "+i.Title,state=i.Connected?"ready":i.State=="未连接"?"unconnected":"busy",status=i.State}),
+            sessions=sessions.Select(i=>new {id=i.Key,pid=i.Pid,version=i.Version==0?"未知":i.Version.ToString(),scene=i.Scene??"",title=String.IsNullOrEmpty(i.Scene)?i.Title:Path.GetFileName(i.Scene),
+                detail="Max "+(i.Version==0?"未知版本":i.Version.ToString())+" · PID "+i.Pid+" · "+i.Title,
+                state=i.Connected?"ready":connecting.Any(c=>c.Session==i.Key)?"connecting":i.State=="未连接"||i.ConnectionProtocol<2?"unconnected":"busy",status=i.State}),
             pending=pending.Select(p=>new {sessionId=p.Session,toolId=p.Tool})};
     }
     static int Main() {
@@ -225,7 +299,7 @@ static class Provider {
             }
             return 0;
         }catch(Exception e){Console.Error.WriteLine(e.GetBaseException().Message);return 1;}
-        finally{foreach(var p in pending)try{File.Delete(p.Path);}catch{}}
+        finally{foreach(var p in pending)try{File.Delete(p.Path);}catch{}foreach(var c in connecting)try{File.Delete(c.Path);}catch{}}
     }
 }
 }
