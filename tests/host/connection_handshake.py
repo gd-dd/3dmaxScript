@@ -80,6 +80,38 @@ def main():
         temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')
         os.replace(temporary, run / 'report.json')
 
+    def wait_for_osl_idle():
+        """Let this isolated host finish its unrelated background shader scan.
+
+        A naturally disappearing compiler marker and stable cache are observed,
+        never changed. The real worker/launcher exit gates still apply.
+        """
+        from PySide6.QtCore import QCoreApplication, QEventLoop
+        application = QCoreApplication.instance()
+        started = time.monotonic()
+        stable_since = started
+        previous = None
+        samples = []
+        while time.monotonic() - started < 60:
+            if application is not None:
+                application.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, 20)
+            caches = list((run / 'profile').rglob('OSLCache'))
+            files = [p for folder in caches for p in folder.rglob('*') if p.is_file()]
+            markers = list((run / 'profile').rglob('OSL-crash.txt'))
+            state = (len(files), max((p.stat().st_mtime_ns for p in files), default=0), bool(markers))
+            now = time.monotonic()
+            if state != previous:
+                samples.append(dict(seconds=round(now-started, 2), cacheFiles=state[0], compilerMarker=state[2]))
+                previous = state
+                stable_since = now
+            if files and not markers and now - stable_since >= 4:
+                report['oslIdle'] = dict(ok=True, seconds=round(now-started, 2), samples=samples,
+                                         scope='Dedicated host only; observed cache/marker, no shader or settings changes')
+                return
+            time.sleep(.2)
+        report['oslIdle'] = dict(ok=False, samples=samples, seconds=round(time.monotonic()-started, 2))
+        raise AssertionError('OSL background shader compilation did not become idle within 60 seconds')
+
     write_report()  # Publish worker PID/birth before any scene/bridge mutation.
     startup_holds = 0
     created = []
@@ -371,6 +403,10 @@ def main():
                 report['ok'] = False
         except Exception:
             report.update(ok=False, cleanupError=traceback.format_exc())
+        try:
+            wait_for_osl_idle()
+        except Exception:
+            report.update(ok=False, oslIdleError=traceback.format_exc())
         for _ in range(startup_holds):
             rt.theHold.Begin()
         report.pop('activeCase', None)

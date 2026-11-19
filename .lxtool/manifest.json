@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "管理 Max 实例，在 Max 内完成骨骼、蒙皮、权重与表情流程。",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -34,9 +34,9 @@
     "自定义公式关键帧.ms": "a1cdc7aca71f9906f757d172eb75dba5a16da503bd849e74cff1b4c54c0fb851",
     ".lxtool/icon.png": "ad4088b8e786172e357797ca93f37dc7f5097b509dc99904ef5cae534f56ddeb",
     ".lxtool/panel.json": "7692bf6b7411a17ce635ee3243bcc00f568686e5ecaddf0d0d304d675286fee3",
-    ".lxtool/README.md": "23dcc9f9a980ba21086592eba3f296b4fc5c96ee97a7d2f0595daba892223f96",
+    ".lxtool/README.md": "c7ea5ffbe2c4b4a078ca61222789105efc339360a34d031715c2b2b79f42342e",
     "bridge/LXMaxBridge.ms": "42624bf125cc19615d9111e0c43b640165f5803d5089dc3b9a168ac336bc9fd9",
-    "bin/LXMaxSession.exe": "90de0039f5a3c87f3a6ba2602c81cc61a618fdf109996ae5656106113ad2707b",
+    "bin/LXMaxSession.exe": "12396c22d931fd4f0e24f936e60741ea790c4dc0e8a7d284eaa898ade715f1dc",
     "ui/panel.py": "b1bb1f34f33a75009a392cd06c25a467a231328c397fc1da9650002eacd3e25a",
     "ui/tools.json": "dc4906c51e9966e1967b43c4f3aedd2c8df003327d0051254413538287ce51d4",
     "ui/transport.py": "2ad7fb6f0ba7b78a72e24c5c59b427aa30abe5b33e6b34f9675305813aea63c4",
@@ -101,7 +101,7 @@
     "docs/maxsuite-ui-entry.md": "11c46bd522468ea7bb9561a3a632fc3b929dab6aed677293361c0f4c7b4af581",
     "retarget/TODO.md": "21489df88184e11f397e96343a15dbc47a83626b37f55289649994fe487578da"
   },
-  "releaseNotes": "整理全部九项工具布局：工具架按打开Max、连接选窗、打开工具三步排列，连接详情内嵌收纳，九入口分组并适应窄宽；六原脚本收紧对象/参数/主动作，公式参考可展开。绑定蒙皮保留主要操作并收纳低频配置；飘带分组参数和常驻烘焙；重定向优先关键链映射、保留五个主动作和页面状态。保留原业务、实例定向与撤销边界。",
-  "publishedAt": "2026-11-12",
+  "releaseNotes": "刷新扫描全部 Max 进程，按实际程序版本识别 2023–2027，已接入新版连接器的实例自动协商当前工具目录。连接按 PID 与启动时间定向，忙碌时等待；切换失败恢复原连接并释放旧计时器。加宽窗口下拉框，分行显示场景、版本和 PID，长列表可滚动。首次或旧连接器仍需运行一次新版脚本；Max 内 PySide6 工作台需要 2025及以上。本机实测 Max 2026，其他版本完成协议测试。",
+  "publishedAt": "2026-11-19",
   "minClientVersion": "0.0.2"
 }
