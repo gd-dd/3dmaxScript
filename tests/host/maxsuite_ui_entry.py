@@ -355,26 +355,59 @@ def main():
             before = scene()
             selection = list(rt.selection)
             prior = set(host.handle(node) for node in rt.objects)
-            def dimensions(bone):
+            def inspect_shape(bone):
+                mesh = rt.snapshotAsMesh(bone)
+                vertices = [rt.getVert(mesh, i) for i in range(1, mesh.numVerts + 1)]
+                center = sum(vertices[1:], vertices[0]) / len(vertices)
+                for i in range(1, mesh.numFaces + 1):
+                    x, y, z = (int(value) - 1 for value in host.vec(rt.getFace(mesh, i)))
+                    a, b, c = vertices[x], vertices[y], vertices[z]
+                    normal = rt.cross(b - a, c - a)
+                    assert float(rt.dot(normal, (a + b + c) / 3 - center)) > 0, i
                 low, high = rt.nodeGetBoundingBox(bone, rt.Matrix3(1))
-                return host.vec(high-low)
+                assert float(rt.distance((low + high) / 2, bone.pos)) < .001
+                size = host.vec(high - low)
+                assert size[0] > 2 * size[2], size
+                return size
             def transforms(nodes):
                 return [[host.vec(getattr(node.transform, 'row'+str(i))) for i in range(1,5)] for node in nodes]
             try:
                 with pymxs.undo(False):
                     workflow.create_humanoid(dict(height=170, fingers=0, toes=0))
                 bone = next(node for node in workflow.members('bones') if workflow.prop(node,'LXRole')=='Pelvis')
-                size = dimensions(bone)
-                assert size[0] > 2*size[2], size
-                bone.width = float(bone.height)
+                inspect_shape(bone)
+                # Recreate the 0.0.10 display parameters on the same live bone.
+                bone.objectOffsetPos = rt.Point3(0, 0, 0)
+                bone.objectOffsetScale = rt.Point3(1, 1, 1)
+                bone.width, bone.height = workflow.humanoid.dimensions('Pelvis', 170)
+                # Bind a mesh to the old bone and compare the deformed result at a non-neutral pose.
+                sample = rt.Box(name='LXPelvisSkinFixture', pos=bone.pos, length=5, width=10, height=6)
+                host.bind(dict(mesh=host.handle(sample), bones=[host.handle(bone)]))
+                skin = sample.modifiers[0]
+                influence = host.influences(skin)[0]['id']
+                host.write_rows(skin, [{influence: 1.0}] * int(rt.skinOps.GetNumberVertices(skin)),record_history=False)
+                rt.rotate(bone, rt.AngleAxis(22,rt.Point3(0,0,1)))
+                def sample_vertices():
+                    mesh = rt.snapshotAsMesh(sample)
+                    return [rt.getVert(mesh, i) for i in range(1, mesh.numVerts+1)]
+                before_skin = sample_vertices()
+                before_tip = workflow.endpoint(bone)
                 related = [bone, *bone.children]
                 original = transforms(related)
+                rt.select(bone)
                 with pymxs.undo(False):
+                    batch_host.pelvis_shape({})
+                    rt.completeRedraw()
+                    assert all(float(rt.distance(a,b)) < .001 for a,b in zip(before_skin,sample_vertices()))
+                    assert float(rt.distance(before_tip,workflow.endpoint(bone))) < .001
+                    assert transforms(related) == original
+                    rt.rotate(bone, rt.AngleAxis(-22,rt.Point3(0,0,1)))
+                    corrected = inspect_shape(bone)
                     batch_host.pelvis_shape(dict(bones=[host.handle(bone)]))
-                assert transforms(related) == original
-                corrected = dimensions(bone)
-                assert corrected[0] > 2*corrected[2], corrected
-                return dict(worldExtents=corrected, boneAndChildAxesPreserved=True)
+                    assert inspect_shape(bone) == corrected
+                return dict(worldExtents=corrected, centeredOnPivot=True, allFacesOutward=True,
+                            boneAndChildAxesPreserved=True, viewportSelectionAccepted=True,
+                            existingSkinDeformationPreserved=True, logicalEndpointPreserved=True)
             finally:
                 for node in reversed(list(rt.objects)):
                     if rt.isValidNode(node) and host.handle(node) not in prior:

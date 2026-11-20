@@ -19,13 +19,14 @@ def backup(p):
 
 @H.command('bone.connections')
 def connections(p):
+    from .workflow_host import endpoint
     pairs=[]
     for n in rt.objects:
         if H.cls(n)!='BoneGeometry' or n.parent is None or H.cls(n.parent)!='BoneGeometry':continue
         role=str(rt.getUserProp(n,'LXRole') or '');part=role[2:] if role.startswith(('L_','R_')) else role
         if not part or part.startswith(('Clavicle','Thigh')):continue
         if part.startswith(('Finger','Toe')) and not str(rt.getUserProp(n.parent,'LXRole') or '').startswith(role.split('_')[0]+'_'+part.split('_')[0]):continue
-        parent=n.parent;end=parent.objectTransform.row4+parent.objectTransform.row1*float(parent.length)
+        parent=n.parent;end=endpoint(parent)
         distance=float(rt.distance(end,n.pos))
         pairs.append({'parent':str(parent.name),'child':str(n.name),'distance':distance,'parentEnd':H.vec(end),'childStart':H.vec(n.pos)})
     threshold=float(p.get('tolerance',.001));broken=[v for v in pairs if v['distance']>threshold]

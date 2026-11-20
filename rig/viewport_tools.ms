@@ -21,10 +21,18 @@ fn LXPlacementDraw =
                 y *= segment[3].y*LXPlacementHeight*0.5
                 z *= segment[3].x*LXPlacementHeight*0.5
                 local offsets=#(-y-z,y-z,y+z,-y+z)
-                local corners=for v in offsets collect (a+v)
+                local shapeStart=a
+                local shapeEnd=b
+                if segment[3].z > 0 do
+                (
+                    local halfDepth=(b-a)*0.5
+                    shapeStart-=halfDepth
+                    shapeEnd-=halfDepth
+                )
+                local corners=for v in offsets collect (shapeStart+v)
                 gw.polyline corners true
-                for i=1 to 4 do gw.polyline #(corners[i],if segment[3].z > 0 then b+offsets[i] else b) false
-                if segment[3].z > 0 do gw.polyline (for v in offsets collect (b+v)) true
+                for i=1 to 4 do gw.polyline #(corners[i],if segment[3].z > 0 then shapeEnd+offsets[i] else b) false
+                if segment[3].z > 0 do gw.polyline (for v in offsets collect (shapeEnd+v)) true
             )
         )
         gw.text (LXPlacementStart + [0,0,LXPlacementHeight]) ("Height: " + formattedPrint (LXPlacementHeight as float) format:".2f") color:(color 134 184 61)

@@ -16,8 +16,15 @@ def ids(bits):return [int(i) for i in rt.execute('fn LXBitIds b = b as array')(b
 def free_bone(b):
     b.setBoneEnable(True,rt.currentTime);b.boneAutoAlign=prop(b,'LXRole')!='Pelvis';b.boneFreezeLength=False;b.boneScaleType=rt.Name("scale")
 
+def bone_axis(b):
+    if prop(b,'LXRole')=='Pelvis':
+        return b.stretchTM*b.transform
+    return b.objectTransform
+
 def endpoint(b):
-    if H.cls(b)=='BoneGeometry':return b.objectTransform.row4+b.objectTransform.row1*float(b.length)
+    if H.cls(b)=='BoneGeometry':
+        axis=bone_axis(b)
+        return axis.row4+axis.row1*float(b.length)
     if H.is_biped(b):
         children=[n for n in b.children if H.is_biped(n) and H.node_category(n)=='bones']
         if children:return sum((H.position(n) for n in children),rt.Point3(0,0,0))/len(children)
@@ -142,6 +149,21 @@ def viewport_display(p):
     rt.completeRedraw()
     return {'message':'已更新当前视口显示；不改变模型、材质或渲染设置','viewport':viewport_state()}
 
+def shape_pelvis(bone, character_height):
+    """Size the visible bone without letting Max's shoulder cross its tip."""
+    depth = float(bone.length)
+    vertical, transverse = humanoid.dimensions('Pelvis', character_height)
+    # BoneGeometry places the shoulder at (width + height) / 4.
+    # Stretch the mesh across the hips after Max builds a valid short bone.
+    section = min(vertical, depth)
+    bone.width = section
+    bone.height = section
+    bone.taper = 0
+    bone.objectOffsetRot = rt.Quat(0,0,0,1)
+    bone.objectOffsetScale = rt.Point3(1,transverse/section,vertical/section)
+    bone.objectOffsetPos = rt.Point3(-depth/2,0,0)
+
+
 @H.command('humanoid.create',True)
 def create_humanoid(p):
     specs=humanoid.plan(p);created={};rig_id=uuid.uuid4().hex
@@ -149,7 +171,7 @@ def create_humanoid(p):
     center=mark(rt.Point(name=rt.uniqueName((prefix+'_' if prefix else '')+'BodyCenter'),pos=rt.Point3(*pelvis['start']),size=float(p.get('height',170))*.035,box=True,cross=True),'controls','BodyCenter')
     rt.setUserProp(center,'LXRigId',rig_id);center.wireColor=rt.Color(134,184,61)
     for spec in specs:
-        result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=0 if spec['role']=='Pelvis' else .15
+        result=H.create_bone(dict(spec,parent=None));b=H.node(result['node']);b.width,b.height=humanoid.dimensions(spec['role'],float(p.get('height',170)));b.taper=.15
         b.setBoneEnable(False,rt.currentTime);b.showLinks=True;b.showLinksOnly=False;mark(b,'bones',spec['role']);rt.setUserProp(b,'LXRigId',rig_id)
         if spec['chain']:rt.setUserProp(b,'LXChain',spec['chain'])
         b.parent=created[spec['parent']] if spec['parent'] else center
@@ -161,6 +183,7 @@ def create_humanoid(p):
     # Enable automatic Bone behavior only after all transforms and hierarchy
     # are final. This records the right stretch reference even on tiny rigs.
     for b in created.values():free_bone(b)
+    shape_pelvis(created['Pelvis'],float(p.get('height',170)))
     for spec in specs:
         parent=next((s for s in specs if s['role']==spec['parent']),None)
         if parent and binding.distance(parent['end'],spec['start'])<float(p.get('height',170))*1e-8:
@@ -181,7 +204,7 @@ def child(p):
     if parent is None:raise ValueError('请在视口选择一个父骨骼')
     if H.cls(parent)!='BoneGeometry':raise ValueError('自由子骨骼要求 Bone 父骨骼')
     if prop(parent,'LXFinalized'):raise ValueError('请在 IK 定型前添加自由子骨骼')
-    inherited=endpoint(parent)-parent.objectTransform.row4
+    inherited=endpoint(parent)-bone_axis(parent).row4
     start=H.vec(endpoint(parent)) if p.get('extend') or p.get('start') is None else p['start']
     direction=H.vec(rt.Point3(*bone_creation.point(start))+inherited) if p.get('extend') or p.get('direction') is None else p['direction']
     start,end=bone_creation.segment(start,direction,p.get('length',10))
