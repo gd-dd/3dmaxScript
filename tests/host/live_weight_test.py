@@ -32,7 +32,7 @@ def start():
  except Exception:finish(traceback.format_exc())
 def layout_done():
  try:
-  assert w.category_split.count()==2 and w.category_split.height()<=w.shared_scene.height()
+  assert w.category_split.count()==3 and w.category_split.height()<=w.shared_scene.height()
   w.refresh_weight_view();assert len(rt.LXWeightViewData)==2
   dock.grab().save(str(ROOT/'tests/usability-preview.png'))
   rt.select(H.arr([a,b]));rt.execute('max zoomext sel');rt.completeRedraw()

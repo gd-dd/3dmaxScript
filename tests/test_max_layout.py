@@ -1,3 +1,4 @@
+import subprocess
 """Native source-loader regressions for target-safe, narrow Max launch panels.
 
 No Max/provider launch, installation, credential read, or user profile access.
@@ -89,7 +90,9 @@ class MaxLayoutTests(unittest.TestCase):
         self.parent.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         self.layout = QVBoxLayout(self.parent)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.handle = NativePanelHandle(source_tool(), OUT / 'unit-profile', self.parent)
+        tool=source_tool()
+        with mock.patch.object(subprocess,'Popen',side_effect=OSError('synthetic session fixture')):
+            self.handle = NativePanelHandle(tool, OUT / 'unit-profile', self.parent)
         self.panel = self.handle.widget
         self.layout.addWidget(self.panel)
         self.panel.apply_response(dict(sessions=SESSIONS))

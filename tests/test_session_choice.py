@@ -1,3 +1,4 @@
+import subprocess
 """Real Qt combo popup, long session identities, and target-safe refresh tests."""
 import json
 import sys
@@ -18,7 +19,9 @@ class SessionChoiceTests(unittest.TestCase):
     def setUp(self):
         self.host = QWidget();self.host.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
         layout = QVBoxLayout(self.host);layout.setContentsMargins(0, 0, 0, 0)
-        self.handle = NativePanelHandle(source_tool(), OUT / 'choice-profile', self.host)
+        tool=source_tool()
+        with mock.patch.object(subprocess,'Popen',side_effect=OSError('synthetic session fixture')):
+            self.handle = NativePanelHandle(tool, OUT / 'choice-profile', self.host)
         self.panel = self.handle.widget;layout.addWidget(self.panel)
         self.sessions = [dict(id='instance-' + str(i), title='英雄角色_身体服装与表情_%02d.max' % i,
                              detail='PID %d · 场景窗口_%02d - Autodesk 3ds Max 2026' % (10000+i, i),

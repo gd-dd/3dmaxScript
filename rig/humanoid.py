@@ -48,7 +48,7 @@ def plan(options):
 
 def dimensions(role,height):
     """Readable body volumes, including the separate shoulder/clavicle pair."""
-    sizes={'Pelvis':(.065,.115),'Spine':(.08,.055),'Neck':(.025,.025),'Head':(.075,.07),
+    sizes={'Pelvis':(.04,.16),'Spine':(.08,.055),'Neck':(.025,.025),'Head':(.075,.07),
            'Clavicle':(.027,.025),'UpperArm':(.033,.033),'Forearm':(.027,.027),
            'Hand':(.045,.022),'Thigh':(.045,.045),'Calf':(.035,.035),'Foot':(.04,.025)}
     part=role.split('_')[1] if role.startswith(('L_','R_')) else role.split('_')[0]

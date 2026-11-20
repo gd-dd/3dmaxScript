@@ -350,6 +350,38 @@ def main():
             return dict(fileIn=True, bridge=True, sameWindow=True, reopen=True,
                         realQueuedSceneRead=True, parentIsMax=True, sceneUnchanged=True)
 
+        def pelvis_gate():
+            from rig import max_host as host, workflow_host as workflow, batch_host
+            before = scene()
+            selection = list(rt.selection)
+            prior = set(host.handle(node) for node in rt.objects)
+            def dimensions(bone):
+                low, high = rt.nodeGetBoundingBox(bone, rt.Matrix3(1))
+                return host.vec(high-low)
+            def transforms(nodes):
+                return [[host.vec(getattr(node.transform, 'row'+str(i))) for i in range(1,5)] for node in nodes]
+            try:
+                with pymxs.undo(False):
+                    workflow.create_humanoid(dict(height=170, fingers=0, toes=0))
+                bone = next(node for node in workflow.members('bones') if workflow.prop(node,'LXRole')=='Pelvis')
+                size = dimensions(bone)
+                assert size[0] > 2*size[2], size
+                bone.width = float(bone.height)
+                related = [bone, *bone.children]
+                original = transforms(related)
+                with pymxs.undo(False):
+                    batch_host.pelvis_shape(dict(bones=[host.handle(bone)]))
+                assert transforms(related) == original
+                corrected = dimensions(bone)
+                assert corrected[0] > 2*corrected[2], corrected
+                return dict(worldExtents=corrected, boneAndChildAxesPreserved=True)
+            finally:
+                for node in reversed(list(rt.objects)):
+                    if rt.isValidNode(node) and host.handle(node) not in prior:
+                        rt.delete(node)
+                rt.select(host.arr(selection))
+                assert scene() == before, 'Pelvis geometry fixture changed the scene'
+
         def ribbon_gate():
             before = scene()
             with pymxs.undo(False):
@@ -415,7 +447,7 @@ def main():
                         realCapture=True, closeRestoresVisibility=True, parentIsMax=True,
                         fixturesRemoved=True)
 
-        for name, callback in (('rig-entry', rig_gate), ('ribbon-entry', ribbon_gate), ('retarget-entry', retarget_gate)):
+        for name, callback in (('rig-entry', lambda: dict(rig_gate(), pelvisDisplay=pelvis_gate())), ('ribbon-entry', ribbon_gate), ('retarget-entry', retarget_gate)):
             run_check(name, callback)
         report['resourcesUnchangedDuringRun'] = resources() == manifest
         report['sceneUnchanged'] = scene() == initial
@@ -468,6 +500,32 @@ def main():
         lifecycle('cleanup.methods-restored')
         app.aboutToQuit.disconnect(about_to_quit)
         app.lastWindowClosed.disconnect(last_window_closed)
+        # Match the connection release gate: let the isolated profile's
+        # shader cache finish compiling before Max tears down its plugins.
+        started = time.monotonic()
+        previous = None
+        stable = started
+        idle = False
+        while time.monotonic() - started < 60:
+            app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, 20)
+            cache = [file for directory in (out/'profile').rglob('OSLCache')
+                     for file in directory.rglob('*') if file.is_file()]
+            try:
+                state = (len(cache), max((file.stat().st_mtime_ns for file in cache),default=0),
+                         any((out/'profile').rglob('OSL-crash.txt')))
+            except FileNotFoundError:
+                time.sleep(.2)
+                continue
+            now = time.monotonic()
+            if state != previous:
+                stable = now
+                previous = state
+            if cache and not state[2] and now-stable >= 4:
+                idle = True
+                break
+            time.sleep(.2)
+        report['oslIdle'] = dict(ok=idle, seconds=round(time.monotonic()-started,2), cacheFiles=len(cache))
+        report['ok'] = report['ok'] and idle
         report['cleanupPhase'] = 'final'
         report['scriptBodyCompleted'] = True
         lifecycle('cleanup.final-signals-disconnected')

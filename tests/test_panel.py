@@ -19,6 +19,18 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(int(self.panel.process.state().value),0)
         self.assertFalse(hasattr(self.panel,'rig'))
         self.assertIn('rig-workbench',self.panel.buttons)
+    def test_single_ready_instance_is_selected_and_reused_by_identity(self):
+        self.panel.context.workspace_state={}
+        session={'id':'42-638700000000000000','state':'ready','pid':42}
+        self.panel.apply_response({'sessions':[session]})
+        self.assertEqual(self.panel.active_id,session['id'])
+        self.assertEqual(self.panel.context.workspace_state['max_target'],(42,'133788768000000000'))
+        self.panel.apply_response({'sessions':[dict(session,id='42-638700000000000001')]})
+        self.assertIsNone(self.panel.active_id)
+        self.assertEqual(self.panel.max_connection_status(),'Max 已断开')
+        self.panel.apply_response({'sessions':[session]})
+        self.assertEqual(self.panel.active_id,session['id'])
+
     def test_closed_selection_never_moves_to_other_window(self):
         self.panel.active_id='closed'
         self.panel.apply_response({'sessions':[{'id':'other','state':'ready','detail':'Other Max'}]})

@@ -168,7 +168,7 @@ class MaxPanel(QWidget):
             QTreeWidget::item:selected {background:#e7f0d8;color:#304927;}
         """)
         self.process=HiddenProcess(self);self.buffer=bytearray();self.requests={};self.queued=[]
-        self.sessions={};self.pending=set();self.buttons={};self.active_id=None
+        self.sessions={};self.pending=set();self.buttons={};self.active_id=None;self.target_id=None
         self.process.readyReadStandardOutput.connect(self.read_output)
         self.process.readyReadStandardError.connect(self.read_error)
         self.process.started.connect(self.provider_started)
@@ -238,6 +238,10 @@ class MaxPanel(QWidget):
         tools,box=self.section('03','在选中 Max 中打开工具');outer.addWidget(tools)
         self.target=TargetLabel();self.target.setStyleSheet('color:#507522')
         self.target.setText('请先选择一个已连接窗口。');box.addWidget(self.target)
+        self.asset_library_button=None
+        if callable(getattr(context,'workspace_state', {}).get('open_tool')):
+            self.asset_library_button=self.button('打开角色与动画资产',self.open_animation_library)
+            box.addWidget(self.asset_library_button)
         self.tool_grids=[]
         groups=[('角色与绑定',('rig-workbench','retarget','ribbon')),
                 ('动画处理',('animation-bake','keyframe-formula','parent-keep-world','root-cleanup')),
@@ -373,7 +377,7 @@ class MaxPanel(QWidget):
                 self.apply_response(value)
                 if op=='hello' and not value.get('events'):
                     ready=sum(s.get('state')=='ready' for s in self.sessions.values())
-                    self.status.setText('扫描完成：%d 个 Max，%d 个已连接。请选择目标窗口；未连接窗口可再次刷新或展开首次连接设置。'%(len(self.sessions),ready))
+                    self.status.setText('扫描完成：%d 个 Max，%d 个已连接。'%(len(self.sessions),ready))
             except (ValueError,KeyError,TypeError) as error:self.fail(str(error))
 
     def apply_response(self,value):
@@ -390,7 +394,15 @@ class MaxPanel(QWidget):
         if not isinstance(pending,list) or len(pending)>100:raise ValueError('后台待处理列表无效')
         if any(not isinstance(p,dict) or not isinstance(p.get('sessionId'),str) or p.get('toolId') not in (*self.buttons,'rig') for p in pending):raise ValueError('后台待处理操作无效')
         self.pending={(p['sessionId'],p['toolId']) for p in pending}
-        self.sessions={s['id']:s for s in sessions};selected=self.active_id
+        self.sessions={s['id']:s for s in sessions}
+        self.target_id=self.target_id or self.active_id
+        if self.target_id is None:
+            shared=getattr(self.context,'workspace_state',{}).get('max_target')
+            if shared:
+                self.target_id=next((s['id'] for s in sessions if self.max_target_key(s)==shared),None)
+            elif len(sessions)==1 and sessions[0]['state']=='ready':
+                self.target_id=sessions[0]['id']
+        selected=self.target_id
         self.list.blockSignals(True);self.list.clear()
         self.session_choice.blockSignals(True);self.session_choice.clear();self.session_choice.addItem('请选择 Max 窗口',None)
         for s in sessions:
@@ -410,6 +422,26 @@ class MaxPanel(QWidget):
         events=value.get('events',[])
         if not isinstance(events,list) or any(not isinstance(e,str) for e in events):raise ValueError('后台事件无效')
         if events:self.status.setText('\n'.join(events[-3:])[:2000])
+
+    @staticmethod
+    def max_target_key(session):
+        pid,separator,birth=session['id'].partition('-')
+        if separator and pid.isdecimal() and birth.isdecimal() and int(birth)>504911232000000000:
+            # The provider uses .NET UTC ticks; the animation bridge uses Windows FILETIME.
+            return int(pid),str(int(birth)-504911232000000000)
+        return None
+
+    def open_animation_library(self):
+        try:
+            self.context.workspace_state['open_tool']('repo-1433389279')
+        except ValueError as error:
+            self.fail(str(error))
+
+    def max_connection_status(self):
+        session=self.sessions.get(self.active_id)
+        if session:
+            return {'ready':'Max 已连接','connecting':'Max 连接中','busy':'Max 忙碌','unconnected':'Max 未连接'}[session['state']]
+        return 'Max 已断开' if self.target_id else 'Max 未连接'
 
     def refresh_connections(self):
         self.status.setText('正在扫描已打开的 Max，识别版本并尝试自动连接已首次接入的窗口…')
@@ -438,7 +470,14 @@ class MaxPanel(QWidget):
 
     def selection_changed(self,item,*_):
         self.active_id=item.data(0,Qt.ItemDataRole.UserRole) if item else None
+        if self.active_id is not None:
+            self.target_id=self.active_id
         session=self.sessions.get(self.active_id,{})
+        if session.get('state')=='ready':
+            state=getattr(self.context,'workspace_state',None)
+            key=self.max_target_key(session)
+            if state is not None and key is not None:
+                state['max_target']=key
         self.session_choice.blockSignals(True)
         self.session_choice.setCurrentIndex(max(0,self.session_choice.findData(self.active_id)))
         description='\n'.join(session_lines(session))+'\n'+session.get('detail','') if session else '请选择目标 Max 窗口'
@@ -475,4 +514,6 @@ class MaxPanel(QWidget):
 
 
 def create_panel(context, parent):
-    return MaxPanel(context, parent)
+    panel=MaxPanel(context, parent)
+    panel.refresh_connections()
+    return panel

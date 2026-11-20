@@ -1,6 +1,6 @@
 """Independent object roles and a resumable, per-model binding queue."""
 from PySide6.QtCore import Qt,QTimer
-from PySide6.QtWidgets import QTreeWidget,QTreeWidgetItem,QHeaderView,QAbstractItemView,QSplitter,QWidget,QVBoxLayout,QLabel,QPushButton,QFrame,QTabWidget
+from PySide6.QtWidgets import QTreeWidget,QTreeWidgetItem,QHeaderView,QAbstractItemView,QSplitter,QWidget,QVBoxLayout,QLabel,QPushButton,QFrame
 from .scene_ui import role_label,prepare_tree
 from .scene_ui import WrapLabel as QLabel
 
@@ -19,18 +19,13 @@ class SelectionMixin:
     def build_categories(self,layout):
         self.tree.hide();self.category_trees={}
         self.object_frame=QFrame();self.object_frame.setObjectName('objectBrowser')
-        self.object_frame.setStyleSheet('''#objectBrowser {border:1px solid #dbe5c9; border-radius:5px; background:white;}
-            #objectBrowser QTreeWidget {border:0; background:white;}
-            #objectBrowser QTabWidget::pane {border:0; background:white;}
-            #objectBrowser QTabBar {background:white;}
-            #objectBrowser QTabBar::tab {background:white; color:#507522; padding:6px 12px; border:0;}
-            #objectBrowser QTabBar::tab:selected {background:#edf5df; border-bottom:2px solid #86b83d;}''')
+        self.object_frame.setStyleSheet("""#objectBrowser {border:1px solid #dbe5c9; border-radius:5px; background:white;}
+            #objectBrowser QTreeWidget {border:0; background:white;}""")
         frame_layout=QVBoxLayout(self.object_frame);frame_layout.setContentsMargins(0,0,0,0);frame_layout.setSpacing(0)
         self.category_split=QSplitter(Qt.Orientation.Vertical);self.category_split.setChildrenCollapsible(False);self.category_split.setHandleWidth(5)
         self.category_split.setStyleSheet('QSplitter::handle {background:#dbe5c9;}')
-        self.role_tabs=QTabWidget();self.role_tabs.tabBar().setDrawBase(False)
         for key,title in [('models','模型 · 多选处理目标'),('bones','骨骼'),('controls','控制器')]:
-            tree=QTreeWidget();prepare_tree(tree);tree.setMinimumHeight(65);tree.setFrameShape(QFrame.Shape.NoFrame)
+            tree=QTreeWidget();prepare_tree(tree);tree.setMinimumHeight(54);tree.setFrameShape(QFrame.Shape.NoFrame)
             tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             tree.setHeaderLabels(['名称 / 层级','部位','影响值']);tree.header().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch)
             tree.header().setStretchLastSection(False)
@@ -38,12 +33,14 @@ class SelectionMixin:
             tree.header().setSectionResizeMode(2,QHeaderView.ResizeMode.Interactive);tree.setColumnWidth(2,60)
             tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
             self.category_trees[key]=tree
-            if key=='models':
-                box=QWidget();v=QVBoxLayout(box);v.setContentsMargins(0,4,0,0);v.addWidget(QLabel(title));v.addWidget(tree)
-                self.category_split.addWidget(box)
-            else:self.role_tabs.addTab(tree,title)
+            box=QWidget()
+            column=QVBoxLayout(box)
+            column.setContentsMargins(0,4,0,0)
+            column.addWidget(QLabel(title))
+            column.addWidget(tree)
+            self.category_split.addWidget(box)
             tree.itemSelectionChanged.connect(lambda c=key:self.category_changed(c))
-        self.category_split.addWidget(self.role_tabs);self.category_split.setSizes([180,300])
+        self.category_split.setSizes([140,190,110])
         frame_layout.addWidget(self.category_split);layout.addWidget(self.object_frame,1)
         self.influence_button=QPushButton('选出影响骨骼');self.influence_button.setToolTip('在骨骼栏选中所选模型的全部 Skin 影响骨骼');self.influence_button.clicked.connect(lambda:self.guard(self.select_model_influences));layout.addWidget(self.influence_button)
         self.weight_summary=QLabel('模型选择与骨骼选择互不覆盖。');self.weight_summary.setWordWrap(True);layout.addWidget(self.weight_summary)

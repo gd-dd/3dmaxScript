@@ -41,10 +41,10 @@ def settled():
  global baseline
  try:
   assert not dock._preview_resizing and not rt.LXWeightViewSuspended
-  assert w.category_split.count()==2
+  assert w.category_split.count()==3
   assert w.selected_models()==[H.handle(model)] and w.selected_bones()==[H.handle(bone)]
-  w.role_tabs.setCurrentIndex(1);assert H.handle(control) in w.selected()
-  w.role_tabs.setCurrentIndex(0);assert w.selected_bones()==[H.handle(bone)]
+  assert H.handle(control) in w.selected()
+  assert w.selected_bones()==[H.handle(bone)]
   assert len(rt.LXWeightViewData)==1
   baseline=reads;QTimer.singleShot(2500,idle)
  except Exception:finish(traceback.format_exc())

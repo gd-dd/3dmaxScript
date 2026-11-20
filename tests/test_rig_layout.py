@@ -285,62 +285,32 @@ class RigLayoutFixtureTests(unittest.TestCase):
         self.assertFalse(w.busy);self.assertTrue(isValid(w.tree))
         self.assertNotIn('pymxs', sys.modules)
 
-    def test_sections_keep_child_draft_and_selections_across_details_resize_and_display(self):
-        w = self.widget
-        self.assertIn(2, w.stage_panels); self.assertIn(6, w.stage_panels)
-        expected = (w.child_parent, w.child_name.text(), w.child_start.text(), w.child_direction.text(), w.child_length.value())
-        for width, height in ((680, 600), (1120, 760), (900, 800)):
-            w.resize(width, height); settle(w)
-            for stage in (2, 6):
-                w.steps.setCurrentIndex(stage)
-                panel = w.stage_panels[stage]
-                panel.back(); settle(w)
-                for title, page in panel.details.items():
-                    panel.open_detail(title); settle(w)
-                    self.assertIs(panel.stack.currentWidget(), page)
-                    panel.back(); settle(w)
-                    self.assertEqual(panel.stack.currentIndex(), 0)
-                    self.assertEqual((w.child_parent, w.child_name.text(), w.child_start.text(), w.child_direction.text(), w.child_length.value()), expected)
-                    self.assertEqual(set(w.selected_models()), {'model-0', 'model-1'})
-                    self.assertEqual(set(w.selected_bones()), {'bone-0', 'bone-1'})
-            w.display_button.click(); settle(w)
-            self.assertIs(w.right_stack.currentWidget(), w.display_panel)
-            w.steps.setCurrentIndex(2); settle(w)
-            self.assertIs(w.right_stack.currentWidget(), w.tabs)
-        self.assertEqual(w.owner.requests, [])
+    def test_workflow_keeps_child_draft_and_selection_across_steps(self):
+        w=self.widget
+        expected=(w.child_parent,w.child_name.text(),w.child_start.text(),w.child_direction.text(),w.child_length.value())
+        for width,height in ((680,600),(1120,760),(900,800)):
+            w.resize(width,height);settle(w)
+            for stage in (2,6,w.steps.count()-1):
+                w.steps.setCurrentIndex(stage);settle(w)
+                self.assertEqual(w.tabs.currentIndex(),stage)
+                self.assertEqual((w.child_parent,w.child_name.text(),w.child_start.text(),w.child_direction.text(),w.child_length.value()),expected)
+                self.assertEqual(set(w.selected_models()),{'model-0','model-1'})
+                self.assertEqual(set(w.selected_bones()),{'bone-0','bone-1'})
+        self.assertEqual(w.owner.requests,[])
 
-    def test_child_fields_and_weight_modes_are_primary_tasks(self):
-        w = self.widget
-        w.steps.setCurrentIndex(2); panel = w.stage_panels[2]; panel.back(); settle(w)
-        for name in ('child_name', 'child_length', 'child_start', 'child_direction'):
-            self.assertTrue(panel.overview.isAncestorOf(getattr(w, name)), name)
-        self.assertFalse(w.symmetry_side.isVisibleTo(w))
-        w.steps.setCurrentIndex(6); w.stage_panels[6].back(); settle(w)
-        for index in range(w.weight_mode.count()):
-            w.weight_mode.setCurrentIndex(index); settle(w)
-            self.assertEqual(w.weight_tasks.currentIndex(), index)
-        self.assertFalse(w.vertex_values.isVisibleTo(w))
-
-    def test_minimum_supported_window_keeps_actions_wholly_reachable(self):
-        w = self.widget
-        w.resize(680, 600); settle(w)
-        self.assertLessEqual(w.width(), 682)
-        self.assertLessEqual(w.height(), 602)
-        for stage in (2, 6):
-            w.steps.setCurrentIndex(stage); panel = w.stage_panels[stage]
-            for title in [None, *panel.details]:
-                panel.back() if title is None else panel.open_detail(title)
-                settle(w)
-                metrics = measure_layout(w, [680, 600])
-                self.assertEqual(metrics['partlyClippedButtons'], [],
-                                 'Action unreachable in stage %s / %s' % (stage, title))
-                self.assertEqual(metrics['clippedButtonText'], [])
-                self.assertEqual(metrics['clippedLabels'], [])
-            panel.back()
-        w.weight_mode.setCurrentIndex(1); settle(w)
-        self.assertEqual(measure_layout(w)['partlyClippedButtons'], [])
-        w.display_button.click(); settle(w)
-        self.assertEqual(measure_layout(w)['partlyClippedButtons'], [])
+    def test_step_navigation_and_flat_controls(self):
+        w=self.widget
+        self.assertFalse(w.previous_step.isEnabled())
+        w.next_step.click()
+        self.assertEqual(w.steps.currentIndex(),1)
+        w.previous_step.click()
+        self.assertEqual(w.steps.currentIndex(),0)
+        w.steps.setCurrentIndex(2);settle(w)
+        for field in (w.child_name,w.child_length,w.child_start,w.child_direction,w.symmetry_side):
+            self.assertTrue(field.isVisibleTo(w))
+        w.steps.setCurrentIndex(6);settle(w)
+        for field in (w.vertex_values,w.brush_mode,w.component,w.limit):
+            self.assertTrue(field.isVisibleTo(w))
 
     def test_long_model_skin_and_bone_names_do_not_enlarge_window(self):
         w = self.widget
@@ -360,7 +330,7 @@ class RigLayoutFixtureTests(unittest.TestCase):
                 Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier,Qt.ScrollPhase.NoScrollPhase,False)
             QApplication.sendEvent(target,event)
             return event
-        for combo in (w.steps,w.bind_method,w.component,w.control_shape,w.weight_mode):
+        for combo in (w.steps,w.bind_method,w.component,w.control_shape):
             combo.clearFocus();before=combo.currentIndex();event=wheel(combo)
             self.assertEqual(combo.currentIndex(),before);self.assertFalse(event.isAccepted())
         for field in (w.child_length,w.rig_height,w.brush_radius,w.chain_counts['spine']):

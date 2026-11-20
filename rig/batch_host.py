@@ -113,6 +113,19 @@ def inspect_weights(meshes,bones):
                         'bones':per_bone,'vertices':[(i+1,values[i]) for i in selected[:200]],'sampleCount':len(selected)})
     return results
 
+@H.command('pelvis.shape',True)
+def pelvis_shape(p):
+    bones=[H.node(handle) for handle in p.get('bones',[])]
+    targets=[bone for bone in bones if F.prop(bone,'LXRole')=='Pelvis' and H.cls(bone)=='BoneGeometry']
+    if not targets:
+        raise ValueError('请先选择本工具生成的 Pelvis 骨盆')
+    for bone in targets:
+        # Use the generated bone segment as the per-character size reference.
+        scale=float(bone.length)/.035
+        bone.width,bone.height=F.humanoid.dimensions('Pelvis',scale)
+    return {'message':'已调整骨盆横向外形，保留骨骼轴与层级。'}
+
+
 @H.command('pelvis.straighten',True)
 def straighten(p):
     bones=[H.node(x) for x in p.get('bones',[])] or F.members('bones')

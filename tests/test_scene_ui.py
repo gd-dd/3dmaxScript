@@ -43,13 +43,13 @@ class SharedSceneTests(unittest.TestCase):
     def test_segment_bending_off_and_mixed_selection_present(self):
         self.assertFalse(self.w.bend_segments.isChecked());self.assertGreaterEqual(self.w.component.findData('mixed'),0)
         self.assertTrue(self.w.color_view.isChecked())
-    def test_two_panes_keep_three_independent_selections_after_resizing(self):
+    def test_three_panes_keep_three_independent_selections_after_resizing(self):
         self.w.show()
         for tree in self.w.category_trees.values():tree.topLevelItem(0).setSelected(True)
-        self.assertEqual(self.w.category_split.count(),2)
+        self.assertEqual(self.w.category_split.count(),3)
         for width,height in [(800,600),(1500,1400),(950,700)]*8:
             self.w.resize(width,height);self.app.processEvents()
-        for index in (1,0,1,0):self.w.role_tabs.setCurrentIndex(index)
+        self.assertTrue(all(tree.isVisibleTo(self.w) for tree in self.w.category_trees.values()))
         self.assertEqual(self.w.selected_models(),['mesh1']);self.assertEqual(self.w.selected_bones(),['hip'])
         self.assertEqual(set(self.w.selected()),{'hip','center'})
         self.assertGreater(self.w.category_split.height(),150)
