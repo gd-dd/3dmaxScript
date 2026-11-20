@@ -234,7 +234,7 @@ class WorkflowWorkbench(SelectionMixin,RigWorkbench):
         left.removeWidget(self.influence_button)
         row=QHBoxLayout()
         row.addWidget(self.influence_button)
-        for label,fn in [('同步到 Max',lambda:self.call('nodes.select',{'nodes':self.selected()}))]:
+        for label,fn in [('同步到 Max',lambda:self.call('nodes.select',{'nodes':self.selected_models()+self.selected()}))]:
             button=QPushButton(label);button.clicked.connect(lambda checked=False,f=fn:self.guard(f));row.addWidget(button)
         left.addLayout(row);weights_form.insertRow(0,target_form)
         self.context_summary=QLabel('读取一次场景，各步骤共用对象和当前模型。');self.context_summary.setWordWrap(True);left.addWidget(self.context_summary)

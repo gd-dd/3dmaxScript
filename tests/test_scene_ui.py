@@ -22,6 +22,36 @@ class SharedSceneTests(unittest.TestCase):
             node('mesh1','BodyA','models'),node('mesh2','BodyB','models',skins=[{'name':'Skin A','index':0,'handle':'skinA'},{'name':'Skin B','index':1,'handle':'skinB'}])]}
         self.w.load_scene(self.data)
     def tearDown(self):self.w.deleteLater();self.app.processEvents()
+    def test_category_header_drag_targets_the_marked_column(self):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtTest import QTest
+        self.w.resize(1080,760);self.w.show();self.app.processEvents()
+        headers=[tree.header() for tree in self.w.category_trees.values()]
+        self.assertEqual(len({h.sectionViewportPosition(2) for h in headers}),1)
+        for header in headers:
+            viewport=header.viewport()
+            for column in (0,1):
+                target=header.sectionSize(column)
+                other=header.sectionSize(1-column)
+                start=QPoint(header.sectionViewportPosition(column+1)-1,header.height()//2)
+                end=start+QPoint(12,0)
+                QTest.mousePress(viewport,Qt.MouseButton.LeftButton,pos=start)
+                QTest.mouseMove(viewport,end)
+                QTest.mouseRelease(viewport,Qt.MouseButton.LeftButton,pos=end)
+                self.assertEqual(header.sectionSize(column),target+12)
+                self.assertEqual(header.sectionSize(1-column),other)
+        self.w.close()
+
+    def test_sync_to_max_uses_all_three_visible_categories(self):
+        from PySide6.QtWidgets import QPushButton
+        for tree in self.w.category_trees.values():
+            tree.topLevelItem(0).setSelected(True)
+        requests=[]
+        self.w.call=lambda action,params:requests.append((action,params))
+        sync=next(button for button in self.w.findChildren(QPushButton) if button.text()=='同步到 Max')
+        sync.click()
+        self.assertEqual(requests,[('nodes.select',{'nodes':['mesh1','hip','center']})])
+
     def test_context_survives_all_steps_and_scene_refresh(self):
         self.w.mesh.setCurrentIndex(self.w.mesh.findData('mesh2'));self.w.skin.setCurrentIndex(1)
         for i in range(self.w.steps.count()):

@@ -17,7 +17,7 @@ QComboBox QAbstractItemView::item:selected { background:#507522; color:#FFFFFF; 
 QTreeWidget { background:#FFFFFF; alternate-background-color:rgba(134,184,61,14); border:1px solid rgba(119,119,119,55); border-radius:6px; }
 QTreeWidget::item { padding:5px; }
 QTreeWidget::item:selected { color:#202020; background:rgba(134,184,61,65); }
-QHeaderView::section { background:rgba(134,184,61,30); color:#507522; border:0; padding:6px; }
+QHeaderView::section { background:rgba(134,184,61,30); color:#507522; border:0; border-right:2px solid #81986b; padding:6px; }
 QTabWidget::pane { border:0; background:#FFFFFF; }
 QTabBar::tab { padding:8px; background:#FFFFFF; border-bottom:2px solid transparent; }
 QTabBar::tab:selected { color:#507522; border-bottom-color:#86B83D; }

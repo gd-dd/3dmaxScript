@@ -75,9 +75,10 @@ QMenu::item { padding: 7px 16px; }
 QMenu::item:selected { background: #d8efdf; }
 QScrollArea { background: transparent; border: 0; }
 QListWidget, QTableWidget, QPlainTextEdit { background: white; border: 1px solid #d2e0d6; border-radius: 4px; selection-background-color: #d8efdf; selection-color: #183d27; }
-QHeaderView::section { background: #edf5ee; color: #3e5d49; border: 0; border-bottom: 1px solid #d2e0d6; padding: 8px; font-weight: 600; }
+QHeaderView::section { background: #edf5ee; color: #3e5d49; border: 0; border-bottom: 1px solid #d2e0d6; border-right: 2px solid #81986b; padding: 8px; font-weight: 600; }
 QTableWidget::item:selected { background: #d8efdf; color: #183d27; }
-QSplitter::handle { background: #d7e3da; }
+QSplitter::handle { background: #a8bba8; }
+QSplitter::handle:hover { background: #688969; }
 QTabWidget::pane { border: 1px solid #d2e0d6; background: white; }
 QTabBar::tab { background: #eaf1eb; padding: 7px 15px; }
 QTabBar::tab:selected { background: #ffffff; color: #277d42; }
@@ -566,7 +567,7 @@ class RebindDialog(QtWidgets.QDialog):
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.Interactive)
         header.resizeSection(1, 160)
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Interactive)
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
         layout.addWidget(self.table, 1)
         self.message = QtWidgets.QLabel("")
@@ -686,6 +687,7 @@ class RetargetWindow(QtWidgets.QDialog):
         nodes_layout.addLayout(nodes_heading)
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(8)
         self.splitter.addWidget(self._side_panel("source"))
         self.splitter.addWidget(self._side_panel("target"))
         self.splitter.setSizes([500, 500])
@@ -831,7 +833,10 @@ class RetargetWindow(QtWidgets.QDialog):
         self.mapping.verticalHeader().hide()
         header = self.mapping.horizontalHeader()
         header.setMinimumSectionSize(60)
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Interactive)
+        header.resizeSection(0, 135)
+        header.setCascadingSectionResizes(False)
+        header.setToolTip("拖动表头分隔线，调整分隔线左侧的列")
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.Interactive)
         header.resizeSection(1, 175)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
