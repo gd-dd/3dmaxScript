@@ -140,7 +140,6 @@ def render_worker(scale):
         settle()
         entry['lastToolsScreenshot'] = screenshot(parent, f'candidate-panel-last-tools-{width}x{height}')
         panel.connection_toggle.click()
-        panel.connection_note.setText('路径已复制。请在目标 Max 中运行脚本后刷新。\nE:/长目录/连接脚本.ms')
         settle()
         panel.scroll.ensureWidgetVisible(panel.connection_options, 0, 4)
         settle()

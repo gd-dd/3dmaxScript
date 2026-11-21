@@ -90,7 +90,7 @@ class SessionChoiceTests(unittest.TestCase):
         self.panel.command = mock.Mock()
         self.panel.connect_button.click()
         self.panel.command.assert_called_once_with('hello')
-        self.assertIn('自动连接', self.panel.status.text())
+        self.assertIn('正在查找 Max 窗口', self.panel.status.text())
         self.assertEqual(self.panel.active_id, 'max-one')
 
     def test_per_instance_version_is_independent_of_new_max_executable(self):

@@ -207,3 +207,12 @@ LXMaxBridgeTimer.Interval = 500
 dotNet.addEventHandler LXMaxBridgeTimer "Tick" LXMaxBridgeTick
 LXMaxBridgeTimer.Start()
 format "LX Max Tools connected: %\n" LXMaxBridgeSession
+
+-- An older v2 bridge can hand off to this build via its existing reconnect protocol.
+global LXMaxAutoConnectRoot = LXMaxBridgeUserRoot
+global LXMaxAutoConnectTimer
+if LXMaxAutoConnectTimer == undefined do
+(
+    local dispatcher = LXMaxBridgeRoot + "\\bridge\\auto_connect.ms"
+    if doesFileExist dispatcher do fileIn dispatcher quiet:true
+)

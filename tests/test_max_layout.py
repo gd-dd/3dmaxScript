@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT.parent / 'LXTools/src'))
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QPushButton, QApplication, QWidget, QVBoxLayout
 from native_panels import NativePanelHandle
 
 PANEL_RESOURCES = ('ui/panel.py', 'ui/tools.json', 'ui/transport.py',
@@ -133,7 +133,7 @@ class MaxLayoutTests(unittest.TestCase):
         self.assertFalse(any(button.isEnabled() for button in self.panel.buttons.values()))
         select(self.panel, 'max-unconnected')
         self.assertFalse(any(button.isEnabled() for button in self.panel.buttons.values()))
-        self.assertIn('首次连接', self.panel.target.text())
+        self.assertIn('空闲后自动连接', self.panel.target.text())
         self.panel.command = mock.Mock()
         self.panel.run_tool('retarget')
         self.panel.command.assert_not_called()
@@ -165,19 +165,11 @@ class MaxLayoutTests(unittest.TestCase):
         self.assertIsNone(self.panel.list.currentItem())
         self.assertFalse(any(button.isEnabled() for button in self.panel.buttons.values()))
 
-    def test_inline_connection_results_preserve_target_without_modal(self):
-        module = sys.modules[type(self.panel).__module__]
+    def test_connection_settings_have_no_manual_script_actions(self):
         self.panel.connection_toggle.click()
-        with mock.patch.object(module.max_connection, 'connection_script',
-                               return_value=OUT / 'fake-connection.ms') as script, \
-             mock.patch.object(module.QApplication, 'clipboard') as clipboard:
-            self.panel.connection_help()
-            script.assert_called_once()
-            clipboard.return_value.setText.assert_called_once()
-        with mock.patch.object(module.max_connection, 'install', return_value=OUT / 'fake-plugin'):
-            self.panel.install_connection()
-        self.assertIn('已安装', self.panel.connection_note.text())
-        self.assertEqual(self.panel.active_id, 'max-one')
+        labels=[button.text() for button in self.panel.connection_options.findChildren(QPushButton)]
+        self.assertEqual(labels,['选择 Max 程序…'])
+        self.assertEqual(self.panel.active_id,'max-one')
         self.assertIsNone(QApplication.activeModalWidget())
 
     def test_scrolling_over_instance_choice_never_changes_command_target(self):

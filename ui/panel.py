@@ -147,7 +147,14 @@ class MaxPanel(QWidget):
         super().__init__(parent)
         self.setFont(QFont('Microsoft YaHei UI',10))
         self.context=context
-        max_connection.refresh_install("max-tools",context.resource("bridge/LXMaxBridge.ms"))
+        self.attach=None
+        try:
+            if QApplication.platformName()!='offscreen':
+                self.attach=max_connection.AutoAttach('max-tools',context)
+            max_connection.register('max-tools',context)
+            self.registration_error=''
+        except (OSError,ValueError) as error:
+            self.registration_error=str(error)
         spec=json.loads(context.resource('ui/tools.json').read_text('utf-8'))
         tool={'root':context.package_root,'name':'Max 工作台','panelData':{'title':'Max 工作台'},'applications':{'max':{'name':'3ds Max','executable':'3dsmax.exe'}}}
         settings=context.load_settings()
@@ -188,7 +195,7 @@ class MaxPanel(QWidget):
         icon=QLabel();icon.setPixmap(QPixmap(str(context.resource('.lxtool/icon.png'))).scaled(44,44,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation));header.addWidget(icon)
         title=QVBoxLayout();title.setSpacing(2)
         title.addWidget(plain('Max 工具集','font-size:21px;font-weight:700;color:#304927'))
-        title.addWidget(plain('打开 Max → 连接窗口 → 打开工具','color:#68775d;font-size:12px'))
+        title.addWidget(plain('自动连接 Max · 选择窗口后打开工具','color:#68775d;font-size:12px'))
         header.addLayout(title,1);outer.addLayout(header)
 
         launch,box=self.section('01','打开 Max');outer.addWidget(launch)
@@ -201,9 +208,9 @@ class MaxPanel(QWidget):
         connections,box=self.section('02','连接并选择窗口');outer.addWidget(connections)
         box.itemAt(0).widget().hide()
         row=QHBoxLayout();self.counter=plain('02  连接并选择窗口','color:#507522;font-weight:600');row.addWidget(self.counter,1)
-        self.connect_button=self.button('连接 / 刷新',self.refresh_connections);row.addWidget(self.connect_button)
+        self.connect_button=self.button('刷新窗口',self.refresh_connections);row.addWidget(self.connect_button)
         box.addLayout(row)
-        self.empty=plain('支持 Max 2023–2027。首次运行连接脚本一次，之后点击「连接 / 刷新」即可按窗口和版本自动匹配。','color:#68775d;padding:4px 0')
+        self.empty=plain('当前没有 Max 窗口。启动 Max 后会自动连接。','color:#68775d;padding:4px 0')
         box.addWidget(self.empty)
         self.list=QTreeWidget();self.list.setHeaderLabels(['Max 窗口','状态']);self.list.setRootIsDecorated(False)
         self.list.setMinimumWidth(0);self.list.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
@@ -215,7 +222,7 @@ class MaxPanel(QWidget):
         self.session_choice=SessionChoice()
         self.session_choice.addItem('请选择 Max 窗口',None)
         self.session_choice.currentIndexChanged.connect(self.choose_session);box.addWidget(self.session_choice)
-        self.connection_toggle=self.button('连接设置与首次连接 · 展开',self.toggle_connection)
+        self.connection_toggle=self.button('连接设置 · 展开',self.toggle_connection)
         self.connection_toggle.setCheckable(True);self.connection_toggle.setStyleSheet('padding:3px 6px;text-align:left;');box.addWidget(self.connection_toggle,alignment=Qt.AlignmentFlag.AlignLeft)
         self.connection_options=QWidget();options=QVBoxLayout(self.connection_options)
         options.setContentsMargins(0,4,0,0);options.setSpacing(8)
@@ -226,12 +233,10 @@ class MaxPanel(QWidget):
         self.path.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
         options.addWidget(self.path)
         options.addWidget(self.button('选择 Max 程序…',self.pick_application),alignment=Qt.AlignmentFlag.AlignLeft)
-        options.addWidget(plain('连接支持 Max 2023–2027，版本按各个窗口识别，与上方新开程序路径无关。首次接入或升级旧版连接桥时，在目标 Max 的「脚本 → 运行脚本」执行一次新版连接脚本；之后刷新即可自动匹配。','color:#68775d;font-size:12px'))
+        options.addWidget(plain('连接支持 Max 2023–2027。窗口就绪后自动连接，多个窗口时请选择操作目标。','color:#68775d;font-size:12px'))
         options.addWidget(plain('绑定蒙皮、飘带、重定向界面需要 Max 2025 或更新版本；连接及其他六款脚本不受此界面版本限制。','color:#68775d;font-size:12px'))
-        options.addWidget(self.button('复制首次连接脚本',self.connection_help))
-        options.addWidget(self.button('以后启动时自动连接',self.install_connection))
-        self.connection_note=plain('','color:#507522;font-size:12px');self.connection_note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        options.addWidget(self.connection_note)
+        if self.registration_error:
+            options.addWidget(plain('Max 启动接入设置未能写入：'+self.registration_error,'color:#68775d;font-size:12px'))
         options.addWidget(plain('全部窗口详情','font-weight:600'));options.addWidget(self.list)
         box.addWidget(self.connection_options);self.connection_options.hide()
 
@@ -295,7 +300,7 @@ class MaxPanel(QWidget):
     def toggle_connection(self):
         opened=self.connection_toggle.isChecked()
         self.connection_options.setVisible(opened)
-        self.connection_toggle.setText('连接设置与首次连接 · 收起' if opened else '连接设置与首次连接 · 展开')
+        self.connection_toggle.setText('连接设置 · 收起' if opened else '连接设置 · 展开')
 
     def section(self, number, title):
         frame=QFrame();frame.setObjectName('card');layout=QVBoxLayout(frame);layout.setContentsMargins(12,10,12,12);layout.setSpacing(8)
@@ -395,6 +400,8 @@ class MaxPanel(QWidget):
         if any(not isinstance(p,dict) or not isinstance(p.get('sessionId'),str) or p.get('toolId') not in (*self.buttons,'rig') for p in pending):raise ValueError('后台待处理操作无效')
         self.pending={(p['sessionId'],p['toolId']) for p in pending}
         self.sessions={s['id']:s for s in sessions}
+        if self.attach:
+            self.attach.poll({self.max_target_key(s) for s in sessions if s['state'] in ('ready','connecting','busy')})
         self.target_id=self.target_id or self.active_id
         if self.target_id is None:
             shared=getattr(self.context,'workspace_state',{}).get('max_target')
@@ -444,20 +451,8 @@ class MaxPanel(QWidget):
         return 'Max 已断开' if self.target_id else 'Max 未连接'
 
     def refresh_connections(self):
-        self.status.setText('正在扫描已打开的 Max，识别版本并尝试自动连接已首次接入的窗口…')
+        self.status.setText('正在查找 Max 窗口…')
         self.command('hello')
-
-    def install_connection(self):
-        try:
-            folder=max_connection.install('max-tools',self.context.resource('bridge/LXMaxBridge.ms'))
-            self.connection_note.setText('已安装自动连接。以后启动 Max 会加载连接桥，刷新即可匹配。尚未接入或仍运行旧版桥的窗口，只需运行一次新版连接脚本。\n'+str(folder))
-        except Exception as error:self.fail(str(error))
-
-    def connection_help(self):
-        try:script=str(max_connection.connection_script('max-tools',self.context.resource('bridge/LXMaxBridge.ms')))
-        except Exception as error:self.fail(str(error));return
-        QApplication.clipboard().setText(script)
-        self.connection_note.setText('路径已复制。在目标 Max 的「脚本 → 运行脚本」中执行一次新版连接脚本；之后点击连接 / 刷新即可自动匹配。\n'+script)
 
     def choose_session(self,index):
         identity=self.session_choice.itemData(index)
@@ -486,7 +481,7 @@ class MaxPanel(QWidget):
         if not session:target='请先选择一个已连接窗口。'
         else:
             target='目标：'+(session.get('detail') or session.get('title','Max'))
-            if session.get('state')=='unconnected':target+='\n尚未连接，请展开首次连接设置运行一次新版连接脚本；之后刷新自动匹配。'
+            if session.get('state')=='unconnected':target+='\n等待 Max 空闲后自动连接。'
             elif session.get('state')!='ready':target+='\n等待窗口恢复连接后即可打开工具。'
         self.target.setText(target)
         for identity,button in self.buttons.items():button.setEnabled(session.get('state')=='ready' and (self.active_id,identity) not in self.pending)
@@ -499,8 +494,8 @@ class MaxPanel(QWidget):
     def fail(self,message):self.status.setText(message)
 
     def timed_out(self):
-        self.fail('工具后台未响应。请点击“连接 / 刷新”重连；已打开的应用不会被关闭。')
-        self.shutdown()
+        self.fail('工具后台未响应。可用「刷新窗口」重试；已打开的应用不会被关闭。')
+        self.stop_provider()
 
     def provider_finished(self,*_):
         self.timer.stop();self.watchdog.stop();self.requests.clear();self.queued.clear();self.buffer.clear()
@@ -508,6 +503,10 @@ class MaxPanel(QWidget):
         if _ and _[0]:self.fail(getattr(self,'last_backend_diagnostic','工具后台已退出，请重新连接。'))
 
     def shutdown(self):
+        if self.attach: self.attach.close();self.attach=None
+        self.stop_provider()
+
+    def stop_provider(self):
         self.timer.stop();self.watchdog.stop();self.queued.clear();self.process.closeWriteChannel()
         if self.process.state()!=QProcess.ProcessState.NotRunning:
             if not self.process.waitForFinished(700):self.process.kill();self.process.waitForFinished(700)

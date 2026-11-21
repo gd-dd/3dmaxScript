@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -102,7 +102,7 @@ public static class Engine {
     public static Instance RequireLive(Instance selected) {
         var live=Scan().FirstOrDefault(i=>i.Key==selected.Key);
         if(live==null) throw new Exception("PID "+selected.Pid+" 已退出，请重新选择。");
-        if(!live.Connected) throw new Exception("PID "+selected.Pid+"："+live.State+"。请先连接或等待 Max 空闲。");
+        if(!live.Connected) throw new Exception("PID "+selected.Pid+"："+live.State+"。请等待自动连接或 Max 空闲。");
         return live;
     }
     public static string Enqueue(Instance selected,string plugin) {
@@ -139,7 +139,7 @@ public static class Engine {
         var live=Scan().FirstOrDefault(i=>i.Key==target.Key);
         if(live==null)throw new Exception("此 Max 已退出，未连接其他窗口。");
         if(!SupportedVersion(live.Version))throw new Exception("无法识别或不支持此 Max 版本（需要 2023–2027）。");
-        if(live.ConnectionProtocol<2)throw new Exception("首次接入或旧连接器：请在此 Max 运行一次连接脚本。");
+        if(live.ConnectionProtocol<2)throw new Exception("此窗口尚未加载连接组件，保存场景并重开 Max 后会自动接入。");
         VerifyPackage();
         var path=Path.Combine(live.Session,Guid.NewGuid().ToString("N")+".connect");
         File.WriteAllText(path+".tmp",ConnectionPayload(live),new UTF8Encoding(false));File.Move(path+".tmp",path);
@@ -233,26 +233,24 @@ static class Provider {
             catch(IOException) {throw new Exception("Max 已接收此操作，无法中途取消；请等待回执。");}
             File.Delete(p.Path+".cancelled");pending.Remove(p);
             results.Add(new {requestId=p.Id,sessionId=p.Session,result=new {ok=false,error="尚未开始的操作已取消。"}});
-        } else if(op=="hello") {
-            foreach(var instance in Engine.Scan()) {
-                if(instance.Connected||connecting.Any(c=>c.Session==instance.Key))continue;
-                if(!Engine.SupportedVersion(instance.Version)) {events.Add("PID "+instance.Pid+"：无法识别或不支持此版本（2023–2027）。");continue;}
-                if(instance.ConnectionProtocol<2) {
-                    events.Add("Max "+instance.Version+" · PID "+instance.Pid+"："+(instance.ConnectionProtocol==1?"需更新连接器":"首次接入")+"，在此窗口运行一次连接脚本后即可自动连接。");continue;
-                }
+        } else if(op!="status"&&op!="hello")throw new Exception("未知操作。");
+        var sessions=Engine.Scan();
+        if(op=="hello"||op=="status") {
+            foreach(var instance in sessions) {
+                if(instance.Connected||connecting.Any(c=>c.Session==instance.Key)||pending.Any(p=>p.Session==instance.Key))continue;
+                if(!Engine.SupportedVersion(instance.Version)||instance.ConnectionProtocol<2||instance.State=="忙碌 / 暂未响应")continue;
                 try {
                     connecting.Add(new ConnectionAttempt{Session=instance.Key,Path=Engine.Connect(instance),Deadline=DateTime.UtcNow.AddSeconds(12)});
                     events.Add("正在连接 Max "+instance.Version+" · PID "+instance.Pid+" 到当前工具版本…");
                 }catch(Exception error){events.Add("PID "+instance.Pid+"："+error.Message);}
             }
-        } else if(op!="status")throw new Exception("未知操作。");
-        var sessions=Engine.Scan();
+        }
         foreach(var connection in connecting.ToArray()) {
             var live=sessions.FirstOrDefault(i=>i.Key==connection.Session);
             if(live!=null&&live.Connected) {
                 events.Add("Max "+live.Version+" · PID "+live.Pid+" 已连接当前工具版本。");connecting.Remove(connection);
             }else if(File.Exists(connection.Path+".result")||live==null||DateTime.UtcNow>connection.Deadline) {
-                var message="连接超时，请等待 Max 空闲后刷新";
+                var message="Max 暂未响应，空闲后会继续尝试连接。";
                 if(live==null)message="窗口已退出";
                 else if(File.Exists(connection.Path+".result"))message=File.ReadAllText(connection.Path+".result");
                 events.Add("PID "+connection.Session.Split('-')[0]+"："+message);connecting.Remove(connection);
