@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "管理 Max 实例，在 Max 内完成骨骼、蒙皮、权重与表情流程。",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -106,7 +106,7 @@
     "uv_overlap.py": "2c873158e27596603dc8a6aa344d96a9901accf5556e89ca50207ee9c7ceb065",
     "uv_overlap_ui.py": "1ba7487f0cf957b142351554dcc94fdfa29495691c3053e84c56cb55f3279ece"
   },
-  "releaseNotes": "新增 UV 重叠：自动识别 UV 编辑器中的两个块，固定 A、对齐 B，可实时预览、微调相位并撤销。Max 工具集同时启用自动连接。",
-  "publishedAt": "2026-11-25",
+  "releaseNotes": "UV 重叠支持带孔的 UV 块。各选一圈外边界即可对齐；孔洞默认自动配对，也可在预览中手动指定对应孔或跳过。相位实时更新，应用后可撤销。",
+  "publishedAt": "2026-11-26",
   "minClientVersion": "0.0.2"
 }
