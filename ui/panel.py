@@ -234,7 +234,7 @@ class MaxPanel(QWidget):
         options.addWidget(self.path)
         options.addWidget(self.button('选择 Max 程序…',self.pick_application),alignment=Qt.AlignmentFlag.AlignLeft)
         options.addWidget(plain('连接支持 Max 2023–2027。窗口就绪后自动连接，多个窗口时请选择操作目标。','color:#68775d;font-size:12px'))
-        options.addWidget(plain('绑定蒙皮、飘带、重定向界面需要 Max 2025 或更新版本；连接及其他六款脚本不受此界面版本限制。','color:#68775d;font-size:12px'))
+        options.addWidget(plain('绑定蒙皮、飘带、重定向和 UV 重叠界面需要 Max 2025 或更新版本；连接及其他六款脚本不受此界面版本限制。','color:#68775d;font-size:12px'))
         if self.registration_error:
             options.addWidget(plain('Max 启动接入设置未能写入：'+self.registration_error,'color:#68775d;font-size:12px'))
         options.addWidget(plain('全部窗口详情','font-weight:600'));options.addWidget(self.list)
@@ -250,7 +250,7 @@ class MaxPanel(QWidget):
         self.tool_grids=[]
         groups=[('角色与绑定',('rig-workbench','retarget','ribbon')),
                 ('动画处理',('animation-bake','keyframe-formula','parent-keep-world','root-cleanup')),
-                ('模型与导入',('material-split','pmx-import'))]
+                ('模型与导入',('material-split','pmx-import','uv-overlap'))]
         by_id={item['id']:item for item in spec['tools']}
         grouped={identity for _,ids in groups for identity in ids}
         extras=tuple(identity for identity in by_id if identity not in grouped)

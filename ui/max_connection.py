@@ -4,7 +4,7 @@ import hashlib
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from threading import Thread
 import ctypes
 from ctypes import wintypes as W
 from pathlib import Path
@@ -264,7 +264,7 @@ class AutoAttach:
         bridge_path=context.resource(worker) if worker else None
         self.bridge_digest=hashlib.sha256(bridge_path.read_bytes()).hexdigest() if bridge_path else None
         self.root=user_root()
-        self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='LXMaxConnect')
+        self.closed=False
         self.job=None
         self.attempts={}
         self.next_scan=0
@@ -272,7 +272,7 @@ class AutoAttach:
         self.windows_count=0
 
     def poll(self,ready):
-        if self.job is not None and not self.job.done():
+        if self.closed or (self.job is not None and self.job.is_alive()):
             return
         now=time.monotonic()
         if now<self.next_scan:
@@ -292,8 +292,16 @@ class AutoAttach:
             if now<self.attempts.get(key,0):
                 continue
             self.attempts[key]=now+12
-            self.job=self.pool.submit(attach_window,window,self.dispatcher,self.digest,self.root)
+            self.job=Thread(target=self.attach,args=(window,),name='LXMaxConnect',daemon=True)
+            self.job.start()
             break
 
+    def attach(self,window):
+        if not self.closed:
+            try:
+                attach_window(window,self.dispatcher,self.digest,self.root)
+            except OSError:
+                pass
+
     def close(self):
-        self.pool.shutdown(wait=False,cancel_futures=True)
+        self.closed=True

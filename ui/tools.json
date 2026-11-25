@@ -57,6 +57,12 @@
       "label": "PMX 导入",
       "description": "导入模型与相关资源",
       "group": "模型"
+    },
+    {
+      "id": "uv-overlap",
+      "label": "UV 重叠",
+      "description": "自动对齐两个 UV 块，实时预览并微调相位",
+      "group": "模型"
     }
   ]
 }

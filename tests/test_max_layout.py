@@ -190,7 +190,7 @@ class MaxLayoutTests(unittest.TestCase):
             self.assertEqual(self.panel.active_id, 'max-one')
 
     def test_narrow_and_large_sizes_keep_all_nine_tools_reachable(self):
-        self.assertEqual(len(self.panel.buttons), 9)
+        self.assertEqual(len(self.panel.buttons), 10)
         for width, height in ((380, 450), (620, 640), (980, 800)):
             self.parent.resize(width, height)
             settle()

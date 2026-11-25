@@ -131,7 +131,7 @@ fn LXMaxBridgeRun id =
 (
     local year = (((maxVersion())[1] / 1000) as integer) + 1998
     if year < 2023 or year > 2027 do throw "连接支持 3ds Max 2023–2027"
-    if year < 2025 and (findItem #("rig-workbench", "ribbon", "retarget") id) > 0 do
+    if year < 2025 and (findItem #("rig-workbench", "ribbon", "retarget", "uv-overlap") id) > 0 do
         throw "此工具窗口需要 PySide6（Max 2025及以上）；2023/2024连接及六款MAXScript工具可用"
     local script = case id of
     (
@@ -144,6 +144,7 @@ fn LXMaxBridgeRun id =
         "rig-workbench": "LX_RigSkin.ms"
         "ribbon": "LX_Ribbon.ms"
         "retarget": "LX_Retarget.ms"
+        "uv-overlap": "LX_UVOverlap.ms"
         default: undefined
     )
     if script == undefined then throw "Unknown plugin ID"
