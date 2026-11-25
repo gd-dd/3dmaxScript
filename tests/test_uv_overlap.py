@@ -1,6 +1,6 @@
 import unittest
 
-from uv_overlap import Alignment, islands
+from uv_overlap import Alignment, boundary_selection, islands
 
 
 class UVOverlapTests(unittest.TestCase):
@@ -28,3 +28,65 @@ class UVOverlapTests(unittest.TestCase):
     def test_requires_closed_continuous_boundary(self):
         with self.assertRaisesRegex(ValueError,'连续'):
             Alignment({},[(1,2,3),(1,4,5)],[(6,7,8)])
+
+
+    def ring_grid(self, a_holes, b_holes):
+        a, b = [], []
+        points = {1+y*6+x:complex(x,y) for y in range(5) for x in range(6)}
+        points.update({i+30:7+2j*p for i,p in list(points.items())})
+        for faces,holes,offset in ((a,a_holes,0),(b,b_holes,30)):
+            for y in range(4):
+                for x in range(5):
+                    if (x,y) not in holes:
+                        i = 1+y*6+x+offset
+                        faces.append((i,i+1,i+7,i+6))
+        return points,a,b
+
+    def test_two_holes_auto_pair_and_allow_manual_override(self):
+        holes = {(1,1),(3,2)}
+        points,a,b = self.ring_grid(holes,holes)
+        plan = Alignment(points,a,b)
+        border = set(plan.a+plan.b)
+        self.assertEqual(boundary_selection([a,b],border,points,len(border)),[a,b])
+        with self.assertRaisesRegex(ValueError,'未选完整'):
+            boundary_selection([a,b],border-{plan.b[0]},points)
+        with self.assertRaisesRegex(ValueError,'只选两圈'):
+            boundary_selection([a,b],border,points,len(border)-1)
+        with self.assertRaisesRegex(ValueError,'只选两圈'):
+            boundary_selection([a,b],border|set(plan.a_holes[0]),points)
+        result,mode = plan.result(0)
+        self.assertEqual(plan.matched,{0:0,1:1})
+        self.assertEqual(mode,'逐点重叠')
+        self.assertEqual(result,{i:points[i-30] for i in plan.nb})
+        result,_ = plan.result(0,{0:1})
+        self.assertEqual(plan.matched,{0:1,1:0})
+        self.assertEqual({result[i] for i in plan.b_holes[1]},{points[i] for i in plan.a_holes[0]})
+        plan.result(0,{0:None})
+        self.assertEqual(plan.matched,{1:1})
+
+    def test_unequal_hole_counts_keep_unmatched_boundaries(self):
+        points,a,b = self.ring_grid({(1,1)},{(1,1),(3,2)})
+        plan = Alignment(points,a,b)
+        result,_ = plan.result(0)
+        self.assertEqual(plan.matched,{0:0})
+        self.assertEqual(set(result),set(plan.nb))
+        for i in plan.b_holes[1]:
+            self.assertAlmostEqual(abs(result[i]-points[i-30]),0.)
+
+
+    def test_different_hole_point_counts_follow_matching_corners(self):
+        points,a,b = self.ring_grid({(1,1)},{(1,1)})
+        original = Alignment(points,a,b)
+        left,right = original.b_holes[0][:2]
+        mid = max(points)+1
+        points[mid] = (points[left]+points[right])/2
+        for i,face in enumerate(b):
+            for j,vertex in enumerate(face):
+                if {vertex,face[(j+1)%len(face)]} == {left,right}:
+                    b[i] = face[:j+1]+(mid,)+face[j+1:]
+                    break
+        plan = Alignment(points,a,b)
+        result,_ = plan.result(0)
+        self.assertEqual(plan.matched,{0:0})
+        self.assertEqual(len(plan.b_holes[0]),5)
+        self.assertAlmostEqual(abs(result[mid]-(points[left-30]+points[right-30])/2),0.)

@@ -34,7 +34,7 @@
     "自定义公式关键帧.ms": "a1cdc7aca71f9906f757d172eb75dba5a16da503bd849e74cff1b4c54c0fb851",
     ".lxtool/icon.png": "ad4088b8e786172e357797ca93f37dc7f5097b509dc99904ef5cae534f56ddeb",
     ".lxtool/panel.json": "7692bf6b7411a17ce635ee3243bcc00f568686e5ecaddf0d0d304d675286fee3",
-    ".lxtool/README.md": "c1d33085c3acd2f491e923dc144d5979fc7d910a6ed8ff284c71a3d123954660",
+    ".lxtool/README.md": "17c017e7c68b03d5e5a306283ed17b7216f1503b98ba341ddc09224d2f33ae4d",
     "bridge/LXMaxBridge.ms": "cb4bd00888b7dcf8a46a0ef7f916a00ed59801e585ebf153e2ff0a83c06c7b66",
     "bin/LXMaxSession.exe": "47def63076ccaea9bf684f7cbe67e2c4834678a3f588fc9a0fca0c90af9aa373",
     "ui/panel.py": "e532e5aff1d3873c7e0cec52ff3701a9e886dd98d415efa94788b7b71a4c2007",
@@ -103,8 +103,8 @@
     "bridge/auto_connect.ms": "be9b55b4c38dc5c2c46e962f5639cbc0495bd0b56f7ad0026856f2501947e3f9",
     "LX_UVOverlap.ms": "4177818ea177d45efee1c291bfe7a26b079c937e9c94aa9ea4323edf7929545d",
     "bridge/open_uv_overlap.py": "7c87e6ed1a27fd57f869568b5856a4163a63ce5fdaeef1803e73ad246c7cf5eb",
-    "uv_overlap.py": "5dea7056d4c125175145afd4dd1a5b971cfb3e9aa4fdd6d31bac96a33242c438",
-    "uv_overlap_ui.py": "e3ad4f3d66da26af75e8aa2c1bea39419a25e098f626c29f607113a557a6c1ae"
+    "uv_overlap.py": "2c873158e27596603dc8a6aa344d96a9901accf5556e89ca50207ee9c7ceb065",
+    "uv_overlap_ui.py": "1ba7487f0cf957b142351554dcc94fdfa29495691c3053e84c56cb55f3279ece"
   },
   "releaseNotes": "新增 UV 重叠：自动识别 UV 编辑器中的两个块，固定 A、对齐 B，可实时预览、微调相位并撤销。Max 工具集同时启用自动连接。",
   "publishedAt": "2026-11-25",
