@@ -66,7 +66,7 @@ class Preview(QWidget):
         self._drag_target = None
         self._drag_delta = QPointF()
         self.setAccessibleName('UV 边配对和重叠预览')
-        self.setAccessibleDescription('点击外边界配对。拖动原始 A、原始 B 或重叠中的 B 查看，松手回到原位。')
+        self.setAccessibleDescription('在聚焦的轮廓上点击对应边。拖动 A、B 或重叠中的 B 查看，松手回到原位。')
         self._editable = True
         self.clear_scene()
 
@@ -77,6 +77,7 @@ class Preview(QWidget):
         self._hover = None
         self._links = ()
         self._point_links = ()
+        self._overview_loops = ((), ())
         self._titles = _DEFAULT_TITLES
         self._pending = None
         self._show_bridges = True
@@ -91,11 +92,13 @@ class Preview(QWidget):
         self.update()
 
     def set_scene(self, a_faces, b_faces, a_loop, b_loop, output, links,
-                  pending=None, labels=(), show_bridges=True, titles=None, point_links=()):
+                  pending=None, labels=(), show_bridges=True, titles=None, point_links=(),
+                  overview_loops=None):
         self._cancel_drag()
         self._scene = (a_faces, b_faces, a_loop, b_loop, output, labels)
         self._links = tuple(links)
         self._point_links = tuple(point_links)
+        self._overview_loops = overview_loops if overview_loops is not None else ((), ())
         self._titles = titles or _DEFAULT_TITLES
         self._pending = pending
         self._show_bridges = show_bridges
@@ -121,15 +124,16 @@ class Preview(QWidget):
         }
         layouts = {}
         self._projects = {}
-        for side, faces, loop in (('a', a_faces, a_loop), ('b', b_faces, b_loop)):
+        sources = (('a', a_faces, a_loop), ('b', b_faces, b_loop))
+        for (side, faces, loop), outlines in zip(sources, self._overview_loops):
             box = panels[side]
-            project = _project(box.adjusted(17., 48., -17., -32.), faces)
+            project = _project(box.adjusted(17., 48., -17., -32.), faces or outlines)
             self._projects[side] = project
             rim = [project(p) for p in loop] if project else []
             edges = list(zip(rim, rim[1:]+rim[:1]))
-            hole_labels = [(project(p), color, name) for p,color,name in labels
-                           if project and name.lower().startswith(side)]
-            layouts[side] = (box, _paths(faces, project), edges, hole_labels)
+            contour_labels = [(project(p), color, name) for p,color,name in labels
+                              if project and name.lower().startswith(side)]
+            layouts[side] = (box, _paths(faces, project), edges, contour_labels, _paths(outlines, project))
         box = panels['result']
         project = _project(box.adjusted(15., 48., -15., -30.),
                            [*a_faces, *output] if output else a_faces)
@@ -138,7 +142,7 @@ class Preview(QWidget):
         self._layout = layouts
 
     def edge_points(self, side, index):
-        """Return the screen-space endpoints of an outer boundary edge."""
+        """Return the screen-space endpoints of an edge on the focused contour."""
         self._prepare_layout()
         if self._layout is None or side not in _COLORS:
             return None
@@ -196,7 +200,7 @@ class Preview(QWidget):
         if not self._editable or self._layout is None:
             return None
         for side in _COLORS:
-            box, _, edges, _ = self._layout[side]
+            box, _, edges, _, _ = self._layout[side]
             if box.contains(point) and edges:
                 distance, index = min((_distance2(point, a, b), i)
                                       for i,(a,b) in enumerate(edges))
@@ -214,6 +218,8 @@ class Preview(QWidget):
             box, path, *_ = self._layout[side]
             if side == 'result':
                 path = self._layout[side][2]
+            elif path.isEmpty():
+                path = self._layout[side][4]
             if path is not None and not path.isEmpty() and box.contains(point) and path.boundingRect().adjusted(
                     -_HIT_RADIUS, -_HIT_RADIUS, _HIT_RADIUS, _HIT_RADIUS).contains(point):
                 return side
@@ -344,11 +350,11 @@ class Preview(QWidget):
         self._draw_pick(painter, self._pending, True)
 
     def _draw_source(self, painter, side):
-        box, mesh, edges, labels = self._layout[side]
+        box, mesh, edges, labels, outlines = self._layout[side]
         color = _COLORS[side]
-        if mesh.isEmpty():
+        if mesh.isEmpty() and outlines.isEmpty():
             painter.setPen(QColor('#506452'))
-            painter.drawText(box,Qt.AlignmentFlag.AlignCenter,'该侧无对应孔')
+            painter.drawText(box,Qt.AlignmentFlag.AlignCenter,'该侧无对应轮廓')
             return
         faint = QColor(color)
         faint.setAlpha(120)
@@ -359,6 +365,7 @@ class Preview(QWidget):
         painter.translate(offset)
         painter.drawPath(mesh)
         painter.setPen(_pen(color, 2.2))
+        painter.drawPath(outlines)
         for a,b in edges:
             painter.drawLine(a,b)
         painter.restore()
@@ -380,7 +387,7 @@ class Preview(QWidget):
             painter.setPen(QColor('#506452'))
             painter.drawText(box.adjusted(9., 0., -9., -8.),
                              Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignBottom,
-                             'A 实线    B 虚线')
+                             'B 虚线' if fixed.isEmpty() else 'A 实线    B 虚线')
         else:
             painter.setPen(QColor('#506452'))
             both_sides = self._projects['a'] is not None and self._projects['b'] is not None

@@ -180,7 +180,7 @@ class Boundary:
         reverse = {}
         for a,b in edge_pairs:
             if not (0<=a<a_count and 0<=b<b_count):
-                raise ValueError('所选边不在当前外边界上。')
+                raise ValueError('所选边不在当前轮廓上。')
             endpoints = (a,(a+1)%a_count)
             if direction < 0:
                 endpoints = endpoints[::-1]
@@ -237,7 +237,7 @@ def loop_center(points):
         total += (p+q)/2*span
         length += span
     if length < 1e-10:
-        raise ValueError('孔边界长度为零，请先检查展开。')
+        return sum(points)/len(points)
     return total/length
 
 
@@ -248,74 +248,155 @@ class Alignment:
         b_loops, self.nb = topology(b)
         if (max(map(len,a_loops+b_loops)) > 4096 or max(len(self.na),len(self.nb)) > 20000
                 or max(len(a_loops),len(b_loops)) > 65):
-            raise ValueError('UV 块过大或孔洞超过 64 个，请拆分后对齐。')
-        self.a, *self.a_holes = ordered_loops(a_loops, positions)
-        self.b, *self.b_holes = ordered_loops(b_loops, positions)
+            raise ValueError('UV 块过大或轮廓超过 65 圈，请拆分后对齐。')
+        self.contours_a = ordered_loops(a_loops,positions)
+        self.contours_b = ordered_loops(b_loops,positions)
+        self.a, self.b = self.contours_a[0], self.contours_b[0]
         self.mirror = mirror
-        self.a_centers = [loop_center([positions[i] for i in loop]) for loop in self.a_holes]
-        self.b_centers = [loop_center([positions[i] for i in loop]) for loop in self.b_holes]
-        self.boundary = Boundary(positions, self.a, self.b, mirror, extra_score=self.hole_score)
-        self.phases = self.boundary.phases
-        self.equal = self.boundary.equal
+        a_points = [[positions[i] for i in loop] for loop in self.contours_a]
+        b_points = [[positions[i] for i in loop] for loop in self.contours_b]
+        self.centers_a = [loop_center(points) for points in a_points]
+        self.centers_b = [loop_center(points) for points in b_points]
+        self.sizes_a = [abs(area(points))**.5 for points in a_points]
+        self.sizes_b = [abs(area(points))**.5 for points in b_points]
+        # The largest two contours only seed the spatial estimate. Every matched
+        # contour, including this seed, uses the same edge correspondence solver.
+        self.boundary = Boundary(positions,self.a,self.b,mirror,extra_score=self.context_score)
+        self.phases, self.equal = self.boundary.phases, self.boundary.equal
         self.ambiguous = self.boundary.ambiguous
         self.reference = None
-        self.hole_boundaries = {}
+        self.reference_boundaries = {}
+        self.primary_profile = None
+        self.contour_boundaries = {}
+        self.matched = {}
+        self.unmatched_a = tuple(range(len(a_loops)))
+        self.unmatched_b = tuple(range(len(b_loops)))
 
-    def hole_score(self, move):
-        if not self.a_centers or not self.b_centers:
+    def context_score(self, move):
+        if len(self.centers_a)<2 or len(self.centers_b)<2:
             return 0.
-        moved = [move(p) for p in self.b_centers]
-        return .25*sum(min(abs(p-q)**2 for q in self.a_centers) for p in moved)/len(moved)
+        targets = self.centers_a[1:]
+        moved = [move(p) for p in self.centers_b[1:]]
+        return .25*sum(min(abs(p-q)**2 for q in targets) for p in moved)/len(moved)
 
     def pairs(self, move, overrides):
-        # Each B hole can be assigned to only one A hole.
         pairs = dict(overrides)
-        occupied = {i for i in pairs.values() if i is not None}
-        candidates = sorted((abs(p-move(q)), a, b)
-                            for a,p in enumerate(self.a_centers) if a not in pairs
-                            for b,q in enumerate(self.b_centers) if b not in occupied)
+        if any(not 0 <= a < len(self.contours_a) or
+               (b is not None and not 0 <= b < len(self.contours_b))
+               for a,b in pairs.items()):
+            raise ValueError('所选轮廓不在当前 UV 块中。')
+        targets = [b for b in pairs.values() if b is not None]
+        occupied = set(targets)
+        if len(occupied)!=len(targets):
+            raise ValueError('每圈 B 只能对应一圈 A。')
+        scale = abs(move(1)-move(0))
+        moved = [move(center) for center in self.centers_b]
+        candidates = sorted((abs(p-q)**2 + (self.sizes_a[a]-scale*self.sizes_b[b])**2,a,b)
+                            for a,p in enumerate(self.centers_a) if a not in pairs
+                            for b,q in enumerate(moved) if b not in occupied)
         for _,a,b in candidates:
             if a not in pairs and b not in occupied:
                 pairs[a] = b
                 occupied.add(b)
         return {a:b for a,b in pairs.items() if b is not None}
 
+    def validate_contour_edges(self, a, b, edge_pairs, flip=False):
+        profile = self.contour_boundaries.get((a,b))
+        if profile is None:
+            raise ValueError('请先为这两圈轮廓建立配对。')
+        profile.parameters(0,edge_pairs,flip)
+
     def validate_edge_pairs(self, edge_pairs, flip_pairs=False):
         self.boundary.parameters(0,edge_pairs,flip_pairs)
 
-    def result(self, phase, overrides=None, edge_pairs=(), flip_pairs=False):
-        outer = self.boundary
-        edge_pairs = tuple(edge_pairs)
-        mirror = self.mirror != bool(edge_pairs and flip_pairs)
-        boundary, linked = outer.mapping(phase,edge_pairs,flip_pairs)
-        move = fit(outer.source,[boundary[i] for i in self.b],mirror)
-        reference = (None if edge_pairs else phase,edge_pairs,mirror)
+    def result(self, phase=0, overrides=None, edge_pairs=(), flip_pairs=False, *,
+               contour_edges=None, contour_phases=None):
+        choices = dict(contour_edges or {})
+        if edge_pairs:
+            choices[0,0] = (edge_pairs,flip_pairs)
+        phases = contour_phases or {}
+        overrides = overrides or {}
+
+        def parameters(pair):
+            edges,flip = choices.get(pair,((),False))
+            return phases.get(pair,phase if pair==(0,0) else 0),tuple(edges),flip
+
+        # Estimate spatial proximity using the largest contours. An explicit
+        # decision to skip or re-pair these contours must not pin any of them.
+        seed = (0,0)
+        seed_available = overrides.get(0,0)==0 and not any(
+            b==0 for a,b in overrides.items() if a!=0)
+        seed_settings = parameters(seed) if seed_available else (0,(),False)
+        _,seed_edges,seed_flip = seed_settings
+        seed_rim,_ = self.boundary.mapping(*seed_settings)
+        seed_mirror = self.mirror != bool(seed_edges and seed_flip)
+        seed_move = fit(self.boundary.source,[seed_rim[i] for i in self.b],seed_mirror)
+        self.matched = self.pairs(seed_move,overrides)
+        self.unmatched_a = tuple(a for a in range(len(self.contours_a)) if a not in self.matched)
+        matched_b = set(self.matched.values())
+        self.unmatched_b = tuple(b for b in range(len(self.contours_b)) if b not in matched_b)
+
+        scale = abs(seed_move(1)-seed_move(0))
+        reference_pair = max(self.matched.items(), key=lambda pair: (
+            min(self.sizes_a[pair[0]],self.sizes_b[pair[1]]*scale), -pair[0], -pair[1]
+        ), default=None)
+        if reference_pair==seed:
+            profile = self.boundary
+        elif reference_pair is not None:
+            key = reference_pair,seed_settings
+            if self.primary_profile is None or self.primary_profile[0]!=key:
+                a,b = reference_pair
+                self.primary_profile = (key,Boundary(
+                    self.positions,self.contours_a[a],self.contours_b[b],
+                    self.mirror,reference=seed_move))
+            profile = self.primary_profile[1]
+        else:
+            profile = None
+
+        self.contour_boundaries = {}
+        boundary,linked = {},{}
+        move,mirror = seed_move,seed_mirror
+        reference = (None,seed_settings)
+        if profile is not None:
+            local_phase,edges,flip = parameters(reference_pair)
+            rim,correspondence = profile.mapping(local_phase,edges,flip)
+            mirror = self.mirror != bool(edges and flip)
+            move = fit(profile.source,[rim[i] for i in profile.b],mirror)
+            reference = (reference_pair,local_phase,edges,flip,seed_settings)
+            self.contour_boundaries[reference_pair] = profile
+            boundary.update(rim)
+            linked.update(correspondence)
         if self.reference != reference:
             self.reference = reference
-            self.hole_boundaries.clear()
-        self.matched = self.pairs(move, overrides or {})
+            self.reference_boundaries.clear()
         for a,b in self.matched.items():
-            if (a,b) not in self.hole_boundaries:
-                self.hole_boundaries[a,b] = Boundary(self.positions,self.a_holes[a],
-                                                      self.b_holes[b],mirror,reference=move)
-            rim, correspondence = self.hole_boundaries[a,b].mapping(0)
+            pair = a,b
+            if pair==reference_pair:
+                continue
+            if pair not in self.reference_boundaries:
+                self.reference_boundaries[pair] = Boundary(
+                    self.positions,self.contours_a[a],self.contours_b[b],mirror,reference=move)
+            profile = self.reference_boundaries[pair]
+            self.contour_boundaries[pair] = profile
+            rim,correspondence = profile.mapping(*parameters(pair))
             boundary.update(rim)
             linked.update(correspondence)
 
         points = {i:move(self.positions[i]) for i in self.nb}
+        if not boundary:
+            return points,'内部映射'
         interior = self.nb.keys()-boundary.keys()
         offsets = {i:boundary[i]-points[i] if i in boundary else 0j for i in self.nb}
         for _ in range(24):
             offsets.update({i:sum(offsets[j] for j in self.nb[i])/len(self.nb[i]) for i in interior})
         points.update({i:points[i]+offsets[i] for i in interior})
         points.update(boundary)
-        if self.equal:
-            fixed_rim = set(self.a).union(*self.a_holes)
-            moving_rim = set(self.b).union(*self.b_holes)
+        if linked:
+            fixed_rim = set().union(*self.contours_a)
             candidates = self.na.keys()-fixed_rim
-            # Use boundary-anchored graph propagation for matching layouts.
             used = set(linked.values())
-            pending = set(interior)-moving_rim
+            # Unmatched B contours join the same free set as ordinary interior vertices.
+            pending = set(interior)
             for _ in range(64):
                 if not pending:
                     break
@@ -339,12 +420,17 @@ class Alignment:
             for i in interior & linked.keys():
                 points[i] = self.positions[linked[i]]
             if len(pending)*len(candidates)<=400000:
-                limit = max(abs(p-outer.target[0]) for p in outer.target)*.025
+                limit = max(abs(p-self.boundary.target[0]) for p in self.boundary.target)*.025
                 for vertex in sorted(pending):
                     near = [(abs(points[vertex]-self.positions[j]),j) for j in candidates if j not in used]
                     if near:
-                        distance, match = min(near)
+                        distance,match_index = min(near)
                         if distance<=limit:
-                            points[vertex]=self.positions[match]
-                            used.add(match)
-        return points, '边界对齐 · 内部映射' if self.equal else ('转角对齐 · 内部映射' if outer.corner_mode else '按轮廓对齐 · 内部映射')
+                            points[vertex]=self.positions[match_index]
+                            used.add(match_index)
+        profiles = self.contour_boundaries.values()
+        if any(profile.corner_mode for profile in profiles):
+            mode = '转角对齐 · 内部映射'
+        else:
+            mode = '轮廓对齐 · 内部映射'
+        return points,mode

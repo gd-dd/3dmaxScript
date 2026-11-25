@@ -47,29 +47,29 @@ class UVOverlapTests(unittest.TestCase):
         points,a,b = self.ring_grid(holes,holes)
         plan = Alignment(points,a,b)
         result,mode = plan.result(0)
-        self.assertEqual(plan.matched,{0:0,1:1})
+        self.assertEqual(plan.matched,{0:0,1:1,2:2})
         self.assertEqual(mode,'逐点重叠')
         self.assertEqual(result,{i:points[i-30] for i in plan.nb})
-        result,_ = plan.result(0,{0:1})
-        self.assertEqual(plan.matched,{0:1,1:0})
-        self.assertEqual({result[i] for i in plan.b_holes[1]},{points[i] for i in plan.a_holes[0]})
-        plan.result(0,{0:None})
-        self.assertEqual(plan.matched,{1:1})
+        result,_ = plan.result(0,{1:2})
+        self.assertEqual(plan.matched,{0:0,1:2,2:1})
+        self.assertEqual({result[i] for i in plan.contours_b[2]},{points[i] for i in plan.contours_a[1]})
+        plan.result(0,{1:None})
+        self.assertEqual(plan.matched,{0:0,2:2})
 
     def test_unequal_hole_counts_keep_unmatched_boundaries(self):
         points,a,b = self.ring_grid({(1,1)},{(1,1),(3,2)})
         plan = Alignment(points,a,b)
         result,_ = plan.result(0)
-        self.assertEqual(plan.matched,{0:0})
+        self.assertEqual(plan.matched,{0:0,1:1})
         self.assertEqual(set(result),set(plan.nb))
-        for i in plan.b_holes[1]:
+        for i in plan.contours_b[2]:
             self.assertAlmostEqual(abs(result[i]-points[i-30]),0.)
 
 
     def test_different_hole_point_counts_follow_matching_corners(self):
         points,a,b = self.ring_grid({(1,1)},{(1,1)})
         original = Alignment(points,a,b)
-        left,right = original.b_holes[0][:2]
+        left,right = original.contours_b[1][:2]
         mid = max(points)+1
         points[mid] = (points[left]+points[right])/2
         for i,face in enumerate(b):
@@ -79,8 +79,8 @@ class UVOverlapTests(unittest.TestCase):
                     break
         plan = Alignment(points,a,b)
         result,_ = plan.result(0)
-        self.assertEqual(plan.matched,{0:0})
-        self.assertEqual(len(plan.b_holes[0]),5)
+        self.assertEqual(plan.matched,{0:0,1:1})
+        self.assertEqual(len(plan.contours_b[1]),5)
         self.assertAlmostEqual(abs(result[mid]-(points[left-30]+points[right-30])/2),0.)
 
 
@@ -133,3 +133,61 @@ class UVOverlapTests(unittest.TestCase):
         plan = Alignment(points,[(1,2,3,4,5,6)],[tuple(range(7,15))])
         with self.assertRaisesRegex(ValueError,'顺序交叉'):
             plan.validate_edge_pairs([(0,0),(4,2),(2,4)])
+
+
+    def test_all_contours_can_be_repaired_with_the_same_edge_solver(self):
+        points,a,b = self.ring_grid({(1,1)},{(1,1)})
+        plan = Alignment(points,a,b)
+        plan.result(0,{0:1,1:0})
+        self.assertEqual(plan.matched,{0:1,1:0})
+        self.assertEqual(plan.unmatched_a,())
+        self.assertEqual(plan.unmatched_b,())
+        plan.validate_contour_edges(0,1,[(0,0)])
+        plan.validate_contour_edges(1,0,[(0,0)])
+        result,_ = plan.result(0,{0:1,1:0},contour_edges={
+            (0,1): ([(0,0)],False), (1,0): ([(0,0)],False)})
+        for a_index,b_index in plan.matched.items():
+            profile = plan.contour_boundaries[a_index,b_index]
+            target = profile.a[:2] if profile.direction>0 else profile.a[1::-1]
+            self.assertEqual([result[i] for i in profile.b[:2]], [points[i] for i in target])
+
+    def test_manual_edge_pins_and_phase_are_independent_by_contour(self):
+        points,a,b = self.ring_grid({(1,1)},{(1,1)})
+        plan = Alignment(points,a,b)
+        initial,_ = plan.result()
+        profile = plan.contour_boundaries[1,1]
+        phase_result,_ = plan.result(contour_phases={(1,1):1})
+        self.assertEqual([initial[i] for i in plan.contours_b[0]],
+                         [phase_result[i] for i in plan.contours_b[0]])
+        self.assertNotEqual([initial[i] for i in profile.b],[phase_result[i] for i in profile.b])
+        anchor = (1,0)
+        plan.validate_contour_edges(1,1,[anchor])
+        edited,_ = plan.result(contour_edges={(1,1):([anchor],False)})
+        a_edge = profile.a[1:3] if profile.direction>0 else profile.a[2:0:-1]
+        self.assertEqual([edited[i] for i in profile.b[:2]], [points[i] for i in a_edge])
+        self.assertEqual([initial[i] for i in plan.contours_b[0]],
+                         [edited[i] for i in plan.contours_b[0]])
+
+    def test_unmatched_contour_vertices_are_not_pinned_to_other_contours(self):
+        points,a,b = self.ring_grid({(1,1)},{(1,1)})
+        plan = Alignment(points,a,b)
+        vertex = plan.contours_b[1][0]
+        points[vertex] += .23
+        plan = Alignment(points,a,b)
+        result,_ = plan.result(overrides={1:None})
+        self.assertEqual(plan.unmatched_a,(1,))
+        self.assertEqual(plan.unmatched_b,(1,))
+        boundaries_a = {points[i] for contour in plan.contours_a for i in contour}
+        self.assertNotIn(result[vertex], boundaries_a)
+        self.assertLess(abs(result[vertex]-points[vertex-30]),.2)
+
+    def test_no_matching_contours_still_returns_free_positions(self):
+        points = dict(enumerate([0j,5+0j,4+3j,2j,10j,6+10j,4+12j,12j],1))
+        plan = Alignment(points,[(1,2,3,4)],[(5,6,7,8)])
+        result,mode = plan.result(overrides={0:None})
+        self.assertEqual(plan.matched,{})
+        self.assertEqual(plan.unmatched_a,(0,))
+        self.assertEqual(plan.unmatched_b,(0,))
+        self.assertEqual(mode,'内部映射')
+        self.assertEqual(result.keys(),plan.nb.keys())
+        self.assertLess(len(set(result.values()) & set(points[i] for i in plan.a)),len(plan.a))

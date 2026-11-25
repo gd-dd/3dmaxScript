@@ -91,17 +91,26 @@ class Window(QDialog):
     def __init__(self,parent):
         super().__init__(parent)
         self.setWindowTitle('LX UV 重叠')
-        self.resize(960,640)
+        self.resize(980,680)
         self.data=None
         self.plan=None
         self.swapped=False
         self.applied=False
-        self.edge_pairs=[]
-        self.pair_history=[]
+        self.contour_edges={}
+        self.reversed_pairs=set()
+        self.edge_history={}
+        self.contour_phases={}
+        self.reviewed=set()
         self.pending_edge=None
         self.match_notice=''
+        self.initial_focus=True
+        self.unconfirmed=[]
+        self.unmatched_a=[]
+        self.unmatched_b=[]
+        self.result=None
+
         layout=QVBoxLayout(self)
-        hint=QLabel('从两个 UV 块各选任意点、边或面，再读取选区。绿色 A 固定，橙色 B 对齐到 A。')
+        hint=QLabel('在 UV 编辑器里从两个块各选任意点、边或面。A 固定，B 对齐到 A。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         controls=QHBoxLayout()
@@ -109,69 +118,66 @@ class Window(QDialog):
         self.button(controls,'读取当前选区',self.read)
         self.swap=self.button(controls,'交换 A / B',self.swap_groups)
         self.mirror=QCheckBox('镜像 B')
-        self.mirror.toggled.connect(lambda _:self.rebuild(preserve_holes=True))
+        self.mirror.toggled.connect(self.mirror_changed)
         controls.addWidget(self.mirror)
         self.reverse=QCheckBox('反向连端点')
-        self.reverse.setToolTip('交换每对边的端点方向，桥接预览会一起更新')
         self.reverse.toggled.connect(self.reverse_pair_direction)
         controls.addWidget(self.reverse)
         controls.addStretch()
         self.show_bridges=QCheckBox('显示桥接')
         self.show_bridges.setChecked(True)
-        self.show_bridges.toggled.connect(self.inspect_hole)
+        self.show_bridges.toggled.connect(self.refresh_preview)
         controls.addWidget(self.show_bridges)
+
+        viewing=QHBoxLayout()
+        viewing.addWidget(QLabel('查看轮廓'))
+        self.contour_view=QComboBox()
+        self.contour_view.setAccessibleName('查看轮廓')
+        self.contour_view.addItem('完整 UV 块',None)
+        self.contour_view.currentIndexChanged.connect(self.contour_view_changed)
+        viewing.addWidget(self.contour_view,1)
+        layout.addLayout(viewing)
         self.preview=Preview()
         self.preview.edgePicked.connect(self.pick_edge)
         layout.addWidget(self.preview,1)
-        pairs=QHBoxLayout()
+
+        actions=QHBoxLayout()
         self.pair_hint=QLabel()
         self.pair_hint.setWordWrap(True)
-        pairs.addWidget(self.pair_hint,1)
-        self.remove_pair=self.button(pairs,'撤回配对',self.undo_pair)
-        self.clear_pairs=self.button(pairs,'清除配对',self.reset_pairs)
-        layout.addLayout(pairs)
+        actions.addWidget(self.pair_hint,1)
+        self.accept_contour=self.button(actions,'确认当前匹配',self.confirm_current_contour)
+        self.remove_pair=self.button(actions,'撤回边配对',self.undo_pair)
+        self.clear_pairs=self.button(actions,'清除边配对',self.reset_pairs)
+        layout.addLayout(actions)
         tuning=QHBoxLayout()
-        layout.addLayout(tuning)
-        self.phase_text=QLabel('相位 0')
+        self.phase_text=QLabel('相位')
         tuning.addWidget(self.phase_text)
         self.phase=QSlider(Qt.Orientation.Horizontal)
-        self.phase.valueChanged.connect(self.render)
+        self.phase.valueChanged.connect(self.phase_changed)
         tuning.addWidget(self.phase,1)
         self.reset=self.button(tuning,'恢复自动相位',lambda:self.phase.setValue(0))
-        self.holes=QWidget()
-        hole_layout=QVBoxLayout(self.holes)
-        hole_layout.setContentsMargins(0,0,0,0)
-        hole_bar=QHBoxLayout()
-        hole_bar.addWidget(QLabel('孔洞配对'))
-        self.hole_view=QComboBox()
-        self.hole_view.setAccessibleName('查看单个孔洞')
-        self.hole_view.setToolTip('单独比较对应孔或未配对的孔')
-        self.hole_view.addItem('查看外圈与全部孔洞',None)
-        self.hole_view.currentIndexChanged.connect(self.hole_choice_changed)
-        hole_bar.addStretch()
-        hole_bar.addWidget(QLabel('单孔预览'))
-        hole_bar.addWidget(self.hole_view)
-        hole_layout.addLayout(hole_bar)
-        self.hole_table=QTableWidget(0,2)
-        self.hole_table.setHorizontalHeaderLabels(['A 固定孔','B 对应孔'])
-        self.hole_table.horizontalHeader().setStretchLastSection(True)
-        self.hole_table.verticalHeader().hide()
-        self.hole_table.verticalHeader().setDefaultSectionSize(30)
-        self.hole_table.setMaximumHeight(160)
-        hole_layout.addWidget(self.hole_table)
-        self.hole_summary=QLabel()
-        self.hole_summary.setWordWrap(True)
-        hole_layout.addWidget(self.hole_summary)
-        layout.addWidget(self.holes)
+        layout.addLayout(tuning)
+
+        self.contour_table=QTableWidget(0,3)
+        self.contour_table.setHorizontalHeaderLabels(['A 固定轮廓','B 对应轮廓','匹配状态'])
+        self.contour_table.horizontalHeader().setStretchLastSection(True)
+        self.contour_table.verticalHeader().hide()
+        self.contour_table.verticalHeader().setDefaultSectionSize(28)
+        self.contour_table.setColumnWidth(0,132)
+        self.contour_table.setColumnWidth(1,228)
+        self.contour_table.cellClicked.connect(self.focus_table_contour)
+        layout.addWidget(self.contour_table)
+        self.force_unmatched=QCheckBox('将未配对轮廓按内部顶点处理')
+        self.force_unmatched.toggled.connect(self.render)
+        layout.addWidget(self.force_unmatched)
         self.status=QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         bottom=QHBoxLayout()
-        layout.addLayout(bottom)
-        legend=QLabel('按住拖动预览块，松开复位 · 应用后可以撤销')
-        bottom.addWidget(legend,1)
+        bottom.addWidget(QLabel('按住拖动预览块，松开复位'),1)
         self.button(bottom,'关闭',self.close)
         self.apply=self.button(bottom,'应用到 UV 编辑器',self.commit)
+        layout.addLayout(bottom)
         self.read()
 
     def button(self,layout,title,action):
@@ -185,14 +191,14 @@ class Window(QDialog):
         self.preview.set_editable(False)
         self.preview.clear_scene()
         self.pair_hint.clear()
-        self.remove_pair.setEnabled(False)
-        self.clear_pairs.setEnabled(False)
-        self.reverse.setEnabled(False)
-        self.apply.setEnabled(False)
-        self.phase.setEnabled(False)
-        self.reset.setEnabled(False)
-        self.swap.setEnabled(self.data is not None)
-        self.holes.hide()
+        self.contour_table.setRowCount(0)
+        self.contour_table.hide()
+        self.force_unmatched.hide()
+        self.contour_view.setEnabled(False)
+        for widget in (self.accept_contour,self.remove_pair,self.clear_pairs,self.reverse,
+                       self.apply,self.phase,self.reset):
+            widget.setEnabled(False)
+        self.swap.setEnabled(False)
         self.status.setText(str(error))
 
     def read(self):
@@ -200,52 +206,153 @@ class Window(QDialog):
         self.plan=None
         self.swapped=False
         self.applied=False
-        self.edge_pairs.clear()
-        self.pair_history.clear()
+        self.contour_edges.clear()
+        self.reversed_pairs.clear()
+        self.edge_history.clear()
+        self.contour_phases.clear()
+        self.reviewed.clear()
         self.pending_edge=None
         self.match_notice=''
-        self.reverse.setChecked(False)
+        self.initial_focus=True
+        self.force_unmatched.setEnabled(True)
+        self.force_unmatched.setChecked(False)
         self.mirror.setEnabled(True)
-        self.show_bridges.setEnabled(True)
         try:
             self.data=snapshot()
-            self.rebuild()
+            self.rebuild({},None)
         except (RuntimeError,ValueError) as error:
             self.failed(error)
 
+    def contour_choices(self):
+        choices={}
+        for i in range(self.contour_table.rowCount()):
+            choice=self.contour_table.cellWidget(i,1).currentData()
+            if choice!=-1:
+                choices[i]=None if choice==-2 else choice
+        return choices
+
     def swap_groups(self):
+        if self.plan is None:
+            return
+        selected=self.contour_view.currentData()
+        previous=self.contour_choices()
+        explicit={} if not previous else {i:None for i in range(len(self.plan.contours_b))}
+        if previous:
+            explicit.update({b:a for a,b in self.plan.matched.items()})
         self.swapped=not self.swapped
-        self.edge_pairs=[(b,a) for a,b in self.edge_pairs]
-        self.pair_history=[[(b,a) for a,b in pairs] for pairs in self.pair_history]
+        self.contour_edges={(b,a):[(j,i) for i,j in edges] for (a,b),edges in self.contour_edges.items()}
+        self.reversed_pairs={(b,a) for a,b in self.reversed_pairs}
+        self.edge_history.clear()
+        self.contour_phases.clear()
+        self.reviewed.clear()
         self.pending_edge=None
         self.match_notice=''
-        self.rebuild()
+        self.clear_force_choice()
+        self.rebuild(explicit,selected[::-1] if selected else None)
 
-    def rebuild(self,preserve_holes=False):
+    def mirror_changed(self,*_):
+        if self.plan is None:
+            return
+        self.pending_edge=None
+        self.match_notice=''
+        self.reviewed.clear()
+        self.clear_force_choice()
+        self.rebuild(self.contour_choices(),self.contour_view.currentData())
+
+    def rebuild(self,choices,selection):
         if self.data is None:
             return
         try:
-            groups=self.data[3]
-            self.groups=groups[::-1] if self.swapped else groups
+            self.groups=self.data[3][::-1] if self.swapped else self.data[3]
             self.points={i:complex(x,y) for i,(x,y,z) in self.data[4].items()}
             self.plan=solver['Alignment'](self.points,*self.groups,mirror=self.mirror.isChecked())
-            self.phase.blockSignals(True)
-            self.phase.setRange(-(self.plan.phases//2),(self.plan.phases-1)//2)
-            self.phase.setValue(0)
-            self.phase.blockSignals(False)
-            self.preview.set_editable(True)
-            self.setup_holes(preserve_holes)
+            self.display_b=dict(self.points)
+            if self.mirror.isChecked():
+                values=[self.points[i].imag for i in self.plan.nb]
+                center=min(values)+max(values)
+                self.display_b.update({i:self.points[i].conjugate()+1j*center for i in self.plan.nb})
+            self.setup_contours(choices)
+            self.contour_view.setEnabled(True)
             self.swap.setEnabled(True)
-            self.phase.setEnabled(True)
-            self.reset.setEnabled(True)
-            self.render()
+            self.render(selection=selection)
         except (RuntimeError,ValueError) as error:
             self.failed(error)
 
-    def pick_edge(self, side, index):
-        if self.plan is None or self.applied or self.hole_view.currentData() is not None:
+    def setup_contours(self,choices):
+        self.contour_table.show()
+        self.contour_table.setEnabled(True)
+        self.contour_table.setRowCount(0)
+        self.contour_table.setRowCount(len(self.plan.contours_a))
+        header=self.contour_table.horizontalHeader().sizeHint().height()
+        count=len(self.plan.contours_a)
+        self.contour_table.setFixedHeight(min(145,header+28*count+2*self.contour_table.frameWidth()))
+        for a,loop in enumerate(self.plan.contours_a):
+            label=QTableWidgetItem(f'A{a+1} · {len(loop)} 边')
+            label.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable)
+            self.contour_table.setItem(a,0,label)
+            choice=QComboBox()
+            choice.addItem('自动',-1)
+            choice.addItem('不配对',-2)
+            for b,outline in enumerate(self.plan.contours_b):
+                choice.addItem(f'B{b+1} · {len(outline)} 边',b)
+            value=choices.get(a,-1)
+            choice.setCurrentIndex(max(0,choice.findData(-2 if value is None else value)))
+            choice.currentIndexChanged.connect(lambda _,row=a:self.change_contour(row))
+            self.contour_table.setCellWidget(a,1,choice)
+            status=QTableWidgetItem()
+            status.setFlags(label.flags())
+            self.contour_table.setItem(a,2,status)
+
+    def change_contour(self,a):
+        choice=self.contour_table.cellWidget(a,1).currentData()
+        if choice>=0:
+            for row in range(self.contour_table.rowCount()):
+                other=self.contour_table.cellWidget(row,1)
+                if row!=a and other.currentData()==choice:
+                    other.blockSignals(True)
+                    other.setCurrentIndex(0)
+                    other.blockSignals(False)
+        self.pending_edge=None
+        self.match_notice=''
+        self.reviewed.clear()
+        self.clear_force_choice()
+        self.render(selection=(a,choice if choice>=0 else None))
+
+    def clear_force_choice(self):
+        self.force_unmatched.blockSignals(True)
+        self.force_unmatched.setChecked(False)
+        self.force_unmatched.blockSignals(False)
+
+    def focus_table_contour(self,a,_):
+        self.select_contour((a,self.plan.matched.get(a)))
+
+    def select_contour(self,focus):
+        for i in range(self.contour_view.count()):
+            if self.contour_view.itemData(i)==focus:
+                self.contour_view.setCurrentIndex(i)
+                return
+
+    def contour_view_changed(self,*_):
+        self.pending_edge=None
+        self.match_notice=''
+        if self.plan is not None:
+            self.update_controls()
+            self.refresh_preview()
+
+    def active_pair(self):
+        focus=self.contour_view.currentData()
+        return focus if focus and None not in focus else None
+
+    def validate_current_edges(self,pair,edges,reverse=None):
+        flip=pair in self.reversed_pairs if reverse is None else reverse
+        self.plan.validate_contour_edges(*pair,edges,flip)
+
+    def pick_edge(self,side,index):
+        pair=self.active_pair()
+        if self.plan is None or self.applied or pair not in self.plan.contour_boundaries:
             return
-        if side not in ('a','b') or not 0 <= index < len(getattr(self.plan,side)):
+        loops=self.plan.contours_a if side=='a' else self.plan.contours_b
+        if side not in ('a','b') or not 0<=index<len(loops[pair[0 if side=='a' else 1]]):
             return
         clicked=(side,index)
         self.match_notice=''
@@ -253,234 +360,236 @@ class Window(QDialog):
             self.pending_edge=None if self.pending_edge==clicked else clicked
         else:
             other=self.pending_edge[1]
-            pair=(index,other) if side=='a' else (other,index)
-            pairs=[(a,b) for a,b in self.edge_pairs if a!=pair[0] and b!=pair[1]]
+            edge=(index,other) if side=='a' else (other,index)
+            old=self.contour_edges.get(pair,[])
+            edges=[(a,b) for a,b in old if a!=edge[0] and b!=edge[1]]+[edge]
             try:
-                self.plan.validate_edge_pairs([*pairs,pair],flip_pairs=self.reverse.isChecked())
+                self.validate_current_edges(pair,edges)
             except ValueError as error:
                 self.match_notice=str(error)
             else:
-                self.pair_history.append(self.edge_pairs)
-                self.edge_pairs=[*pairs,pair]
+                self.edge_history.setdefault(pair,[]).append(old)
+                self.contour_edges[pair]=edges
                 self.pending_edge=None
+                self.reviewed.discard(pair)
         self.render()
 
-    def reverse_pair_direction(self):
+    def reverse_pair_direction(self,checked):
+        pair=self.active_pair()
+        if pair is None or not self.contour_edges.get(pair):
+            return
         self.match_notice=''
+        try:
+            self.validate_current_edges(pair,self.contour_edges[pair],checked)
+        except ValueError as error:
+            self.match_notice=str(error)
+        else:
+            if checked:
+                self.reversed_pairs.add(pair)
+            else:
+                self.reversed_pairs.discard(pair)
         self.render()
+
+    def phase_changed(self,phase):
+        pair=self.active_pair()
+        if pair is not None:
+            self.contour_phases[pair]=phase
+            self.reviewed.discard(pair)
+            self.render()
+
+    def confirm_current_contour(self):
+        pair=self.active_pair()
+        if pair:
+            self.reviewed.add(pair)
+            self.render()
 
     def undo_pair(self):
         self.match_notice=''
+        pair=self.active_pair()
         if self.pending_edge is not None:
             self.pending_edge=None
-        elif self.pair_history:
-            self.edge_pairs=self.pair_history.pop()
+        elif pair and self.edge_history.get(pair):
+            old=self.edge_history[pair].pop()
+            if old:
+                self.contour_edges[pair]=old
+            else:
+                self.contour_edges.pop(pair,None)
+                self.reversed_pairs.discard(pair)
         self.render()
 
     def reset_pairs(self):
         self.match_notice=''
         self.pending_edge=None
-        self.edge_pairs.clear()
-        self.pair_history.clear()
-        self.reverse.setChecked(False)
+        pair=self.active_pair()
+        self.contour_edges.pop(pair,None)
+        self.edge_history.pop(pair,None)
+        self.reversed_pairs.discard(pair)
+        self.reviewed.discard(pair)
         self.render()
 
-    def setup_holes(self,preserve_holes):
-        previous = ([self.hole_table.cellWidget(a,1).currentData()
-                     for a in range(self.hole_table.rowCount())] if preserve_holes else [])
-        if not preserve_holes:
-            self.hole_view.blockSignals(True)
-            self.hole_view.setCurrentIndex(0)
-            self.hole_view.blockSignals(False)
-        a_count=len(self.plan.a_holes)
-        b_count=len(self.plan.b_holes)
-        self.holes.setVisible(bool(a_count or b_count))
-        self.hole_table.setVisible(bool(a_count and b_count))
-        self.hole_table.setEnabled(True)
-        self.hole_table.setRowCount(0)
-        if not a_count or not b_count:
-            return
-        self.hole_table.setRowCount(a_count)
-        header = self.hole_table.horizontalHeader().sizeHint().height()
-        self.hole_table.setFixedHeight(min(160,header+30*a_count+2*self.hole_table.frameWidth()))
-        for a in range(a_count):
-            item=QTableWidgetItem(f'A{a+1}')
-            item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            self.hole_table.setItem(a,0,item)
-            choice=QComboBox()
-            choice.addItem('自动',-1)
-            choice.addItem('不配对',-2)
-            for b in range(b_count):
-                choice.addItem(f'B{b+1}',b)
-            if a < len(previous):
-                choice.setCurrentIndex(choice.findData(previous[a]))
-            choice.currentIndexChanged.connect(lambda _,row=a:self.change_hole(row))
-            self.hole_table.setCellWidget(a,1,choice)
-
-    def change_hole(self, row):
-        chosen=self.hole_table.cellWidget(row,1).currentData()
-        if chosen>=0:
-            for a in range(self.hole_table.rowCount()):
-                other=self.hole_table.cellWidget(a,1)
-                if a!=row and other.currentData()==chosen:
-                    other.blockSignals(True)
-                    other.setCurrentIndex(0)
-                    other.blockSignals(False)
-        self.render()
-
-    def hole_choice_changed(self,*_):
-        if self.hole_view.currentData() is not None:
-            self.pending_edge=None
-            self.match_notice=''
-        self.inspect_hole()
-
-    def inspect_hole(self,*_):
-        if self.plan is None:
-            return
-        if self.applied:
-            self.update_preview(self.phase.value(),self.result)
-        else:
-            self.render()
-
-    def refresh_hole_views(self,pairs):
-        current=self.hole_view.currentData()
+    def refresh_contour_views(self,selection):
+        focus=selection if selection is not None else self.contour_view.currentData()
+        pairs=self.plan.matched
         values=[]
-        for a in range(len(self.plan.a_holes)):
+        for a in range(len(self.plan.contours_a)):
             b=pairs.get(a)
-            label=f'A 孔 {a+1} ↔ B 孔 {b+1}' if b is not None else f'A 孔 {a+1} · 未配对'
+            label=f'A{a+1} ↔ B{b+1}' if b is not None else f'A{a+1} · 未配对'
             values.append((label,(a,b)))
-        used=set(pairs.values())
-        for b in range(len(self.plan.b_holes)):
-            if b not in used:
-                values.append((f'B 孔 {b+1} · 未配对',(None,b)))
-        self.hole_view.blockSignals(True)
+        for b in self.unmatched_b:
+            values.append((f'B{b+1} · 未配对',(None,b)))
+        if self.initial_focus:
+            needs=(self.unconfirmed+[item for _,item in values if None in item])
+            focus=needs[0] if needs else values[0][1] if len(values)==1 else None
+            self.initial_focus=False
+        self.contour_view.blockSignals(True)
         try:
-            self.hole_view.clear()
-            self.hole_view.addItem('查看外圈与全部孔洞',None)
+            self.contour_view.clear()
+            self.contour_view.addItem('完整 UV 块',None)
             selected=0
             for label,pair in values:
-                self.hole_view.addItem(label,pair)
-                if current is not None and (pair==current or
-                    (current[0] is not None and current[0]==pair[0]) or
-                    (current[0] is None and current[1]==pair[1])):
-                    selected=self.hole_view.count()-1
-            self.hole_view.setCurrentIndex(selected)
+                self.contour_view.addItem(label,pair)
+                if focus and (pair==focus or
+                    (focus[0] is not None and focus[0]==pair[0]) or
+                    (focus[0] is None and focus[1]==pair[1])):
+                    selected=self.contour_view.count()-1
+            self.contour_view.setCurrentIndex(selected)
         finally:
-            self.hole_view.blockSignals(False)
+            self.contour_view.blockSignals(False)
 
-    def preview_hole(self, a, b, result):
-        a_ids=self.plan.a_holes[a] if a is not None else []
-        b_ids=self.plan.b_holes[b] if b is not None else []
-        a_loop=[self.points[i] for i in a_ids]
-        b_loop=[self.points[i] for i in b_ids]
-        moved=[result[i] for i in b_ids] if result and b_ids else []
-        links=[]
-        if a_loop and moved:
-            step=max(1,(len(b_loop)+7)//8)
-            for i in range(0,len(b_loop),step):
-                j=(i+1)%len(b_loop)
-                links.append(((moved[i],moved[j]),(b_loop[i],b_loop[j])))
-        titles=(f'A 固定孔 {a+1}' if a is not None else 'A 无对应孔',
-                f'B 移动孔 {b+1}' if b is not None else 'B 无对应孔',
-                '孔洞重叠预览')
-        self.preview.set_editable(False)
-        self.preview.set_scene([a_loop] if a_loop else [],[b_loop] if b_loop else [],
-                               a_loop,b_loop,[moved] if moved else None,(),
-                               show_bridges=self.show_bridges.isChecked(),
-                               titles=titles,point_links=links)
+    def update_controls(self):
+        focus=self.contour_view.currentData()
+        pair=self.active_pair()
+        boundary=self.plan.contour_boundaries.get(pair)
+        manual=bool(self.contour_edges.get(pair))
+        enabled=not self.applied
+        self.phase.blockSignals(True)
+        if boundary:
+            count=boundary.phases
+            self.phase.setRange(-(count//2),(count-1)//2)
+            self.phase.setValue(self.contour_phases.get(pair,0))
+        else:
+            self.phase.setRange(0,0)
+        self.phase.blockSignals(False)
+        self.phase.setEnabled(enabled and boundary is not None and not manual)
+        self.reset.setEnabled(self.phase.isEnabled())
+        self.phase_text.setText('手动配边' if manual else f'相位 {self.phase.value():+d}' if boundary else '相位')
+        self.reverse.blockSignals(True)
+        self.reverse.setChecked(pair in self.reversed_pairs)
+        self.reverse.blockSignals(False)
+        self.reverse.setEnabled(enabled and manual)
+        self.remove_pair.setEnabled(enabled and bool(self.pending_edge or self.edge_history.get(pair)))
+        self.clear_pairs.setEnabled(enabled and bool(self.pending_edge or manual))
+        self.accept_contour.setEnabled(enabled and pair in self.unconfirmed and not self.pending_edge)
+        if self.applied:
+            guide='已应用到 B。仍可查看轮廓和拖动预览。'
+        elif self.pending_edge:
+            side,index=self.pending_edge
+            guide=f"已选 {side.upper()} 第 {index+1} 边。请点 {'B' if side=='a' else 'A'} 的对应边。"
+        elif not focus:
+            guide='选择一对轮廓，可单独查看和点击对应边。'
+        elif not pair:
+            guide='此轮廓尚未配对。可在列表中更换对应轮廓，或按内部顶点处理。'
+        elif pair in self.unconfirmed:
+            reason='边数不同' if not boundary.equal else '有多种相近的匹配'
+            guide=f'{reason}。可点击两侧对应边，或确认当前预览的匹配。'
+        else:
+            guide='点选两侧对应边可调整配对。'
+        self.pair_hint.setText(self.match_notice or guide)
+        self.apply.setEnabled(enabled and self.result is not None and not self.unconfirmed
+                              and not self.pending_edge and (self.force_unmatched.isChecked()
+                              or not (self.unmatched_a or self.unmatched_b)))
 
-    def preview_links(self, phase):
-        outer=self.plan.boundary
-        direction=outer.direction
-        if self.edge_pairs:
-            if self.reverse.isChecked():
-                direction=-direction
-            return [(a,b,direction) for a,b in self.edge_pairs]
-        if not self.plan.equal:
-            return []
-        count=len(self.plan.b)
-        start=(outer.start+phase)%count
-        step=max(1,(count+7)//8)
-        return [((start+direction*i+(direction-1)//2)%count,i,direction)
-                for i in range(0,count,step)]
-
-    def update_preview(self, phase, result):
-        focused=self.hole_view.currentData()
-        if focused is not None:
-            self.preview_hole(*focused,result)
+    def refresh_preview(self,*_):
+        if self.plan is None:
             return
-        self.preview.set_editable(not self.applied)
-        a,b=self.groups
-        def layer(faces,points):
-            return [[points[i] for i in face] for face in faces]
-        labels=[(p,color,f'{name}{i+1}')
-                for points,color,name in ((self.plan.a_centers,'#4b782b','A'),
-                                          (self.plan.b_centers,'#bd6325','B'))
-                for i,p in enumerate(points)]
-        self.preview.set_scene(layer(a,self.points),layer(b,self.points),
-                               [self.points[i] for i in self.plan.a],
-                               [self.points[i] for i in self.plan.b],
-                               layer(b,result) if result else None,
-                               self.preview_links(phase),pending=self.pending_edge,labels=labels,
-                               show_bridges=self.show_bridges.isChecked())
+        focus=self.contour_view.currentData()
+        a_title='A 固定块'
+        b_title='B 镜像移动块' if self.mirror.isChecked() else 'B 移动块'
+        show=self.show_bridges.isChecked()
+        editable=self.active_pair() in self.plan.contour_boundaries and not self.applied
+        self.preview.set_editable(editable)
+        if focus is None:
+            def layers(faces,points):
+                return [[points[i] for i in face] for face in faces]
+            outline_a=layers(self.plan.contours_a,self.points)
+            outline_b=layers(self.plan.contours_b,self.display_b)
+            labels=[(loop[0],color,f'{side}{i+1}')
+                    for loops,side,color in ((outline_a,'A','#4b782b'),(outline_b,'B','#bd6325'))
+                    for i,loop in enumerate(loops)]
+            a,b=self.groups
+            self.preview.set_scene(layers(a,self.points),layers(b,self.display_b),[],[],
+                                   layers(b,self.result) if self.result else None,(),
+                                   titles=(a_title,b_title,'重叠预览'),labels=labels,show_bridges=show,
+                                   overview_loops=(outline_a,outline_b))
+            return
+        a,b=focus
+        a_ids=self.plan.contours_a[a] if a is not None else []
+        b_ids=self.plan.contours_b[b] if b is not None else []
+        a_loop=[self.points[i] for i in a_ids]
+        b_loop=[self.display_b[i] for i in b_ids]
+        moved=[self.result[i] for i in b_ids] if self.result else []
+        pair=self.active_pair()
+        boundary=self.plan.contour_boundaries.get(pair)
+        edges=self.contour_edges.get(pair,[])
+        links=[]
+        point_links=[]
+        if edges and boundary:
+            direction=-boundary.direction if pair in self.reversed_pairs else boundary.direction
+            links=[(i,j,direction) for i,j in edges]
+        elif boundary and moved:
+            for i in range(0,len(b_loop),max(1,(len(b_loop)+7)//8)):
+                j=(i+1)%len(b_loop)
+                point_links.append(((moved[i],moved[j]),(b_loop[i],b_loop[j])))
+        titles=(f'A{a+1} 固定轮廓' if a is not None else 'A 无对应轮廓',
+                f"B{b+1} {'镜像' if self.mirror.isChecked() else '移动'}轮廓" if b is not None else 'B 无对应轮廓',
+                '轮廓重叠预览')
+        self.preview.set_scene([a_loop] if a_loop else [],[b_loop] if b_loop else [],a_loop,b_loop,
+                               [moved] if moved else None,links,pending=self.pending_edge,
+                               titles=titles,point_links=point_links,show_bridges=show)
 
-    def render(self,*_):
+    def render(self,*_,selection=None):
         if self.plan is None or self.applied:
             return
-        phase=self.phase.value()
-        manual=bool(self.edge_pairs)
-        self.phase.setEnabled(not manual)
-        self.reset.setEnabled(not manual)
-        self.reverse.setEnabled(manual)
-        self.phase_text.setText('手动配对' if manual else f'相位 {phase:+d}' if phase else '相位 0')
-        self.remove_pair.setEnabled(bool(self.pending_edge or self.pair_history))
-        self.clear_pairs.setEnabled(bool(self.pending_edge or manual))
-        needs_pair=not self.plan.equal or self.plan.ambiguous
-        if self.pending_edge:
-            side,index=self.pending_edge
-            other='B' if side=='a' else 'A'
-            guide=f'已选 {side.upper()} 的第 {index+1} 条边。请点 {other} 的对应边。'
-        elif manual:
-            guide=f'已配对 {len(self.edge_pairs)} 组。可继续点选边，或反向连接端点。'
-        elif not self.plan.equal:
-            guide='外圈边数不同。请在 A、B 各点一条对应的外边，添加临时桥接。'
-        elif self.plan.ambiguous:
-            guide='检测到多种相近的匹配。请在 A、B 各点一条对应的外边确认。'
-        else:
-            guide='已自动匹配。点选 A、B 的对应边可以手动调整。'
-        self.pair_hint.setText(self.match_notice or guide)
-        overrides={}
-        for a in range(self.hole_table.rowCount()):
-            choice=self.hole_table.cellWidget(a,1).currentData()
-            if choice!=-1:
-                overrides[a]=None if choice==-2 else choice
+        edits={pair:(edges,pair in self.reversed_pairs) for pair,edges in self.contour_edges.items()}
         try:
-            self.result,mode=self.plan.result(phase,overrides,edge_pairs=self.edge_pairs,
-                                              flip_pairs=self.reverse.isChecked())
+            self.result,mode=self.plan.result(0,self.contour_choices(),contour_edges=edits,
+                                              contour_phases=self.contour_phases)
         except ValueError as error:
             self.result=None
-            self.update_preview(phase,None)
             self.apply.setEnabled(False)
             self.status.setText(str(error))
+            self.update_controls()
+            self.refresh_preview()
             return
-        pairs=self.plan.matched
-        self.refresh_hole_views(pairs)
-        focused=self.hole_view.currentData()
-        if focused is not None:
-            self.remove_pair.setEnabled(False)
-            self.clear_pairs.setEnabled(False)
-            self.pair_hint.setText('正在查看这一对孔洞。可在下面更换对应孔。' if None not in focused
-                                   else '正在查看未配对的孔洞。')
-            self.apply.setToolTip('应用会更新 B 的整块 UV，单孔视图用于检查配对。')
+        matched=self.plan.matched
+        self.unconfirmed=[pair for pair,boundary in self.plan.contour_boundaries.items()
+                          if (not boundary.equal or boundary.ambiguous)
+                          and not self.contour_edges.get(pair) and pair not in self.reviewed]
+        self.unmatched_a=[a for a in range(len(self.plan.contours_a)) if a not in matched]
+        used=set(matched.values())
+        self.unmatched_b=[b for b in range(len(self.plan.contours_b)) if b not in used]
+        self.refresh_contour_views(selection)
+        for a in range(self.contour_table.rowCount()):
+            b=matched.get(a)
+            choice=self.contour_table.cellWidget(a,1)
+            choice.setItemText(0,f'自动（B{b+1}）' if choice.currentData()==-1 and b is not None else '自动')
+            pair=(a,b)
+            text='未配对' if b is None else '需确认' if pair in self.unconfirmed else '已配对'
+            self.contour_table.item(a,2).setText(text)
+        names=[f'A{i+1}' for i in self.unmatched_a]+[f'B{i+1}' for i in self.unmatched_b]
+        self.force_unmatched.setVisible(bool(names))
+        if names:
+            label='、'.join(names[:6])+('…' if len(names)>6 else '')
+            fallback=' · 将按内部顶点处理' if self.force_unmatched.isChecked() else ''
+            summary=f'未配对 {len(names)} 圈（{label}）{fallback}'
         else:
-            self.apply.setToolTip('只更新 B 的 UV 坐标。')
-        for a in range(self.hole_table.rowCount()):
-            choice=self.hole_table.cellWidget(a,1)
-            choice.setItemText(0,f'自动（B{pairs[a]+1}）' if a in pairs and a not in overrides else '自动')
-        self.hole_summary.setText(f'A 有 {len(self.plan.a_holes)} 孔 · B 有 {len(self.plan.b_holes)} 孔 · 已配对 {len(pairs)} 组。未配对的孔随 B 一起移动。')
-        self.update_preview(phase,self.result)
-        self.apply.setEnabled(not self.pending_edge and (manual or not needs_pair))
-        self.status.setText(f'A 外圈 {len(self.plan.a)} 边 · B 外圈 {len(self.plan.b)} 边 · {mode}')
+            summary=f'已配对 {len(matched)} 圈'
+        if self.unconfirmed:
+            summary+=f' · 待确认 {len(self.unconfirmed)} 圈'
+        self.status.setText(summary+f' · {mode}')
+        self.status.setToolTip('、'.join(names+[f'A{a+1} ↔ B{b+1} 待确认' for a,b in self.unconfirmed]))
+        self.update_controls()
+        self.refresh_preview()
 
     def commit(self):
         if not self.apply.isEnabled():
@@ -490,19 +599,14 @@ class Window(QDialog):
         except (RuntimeError,ValueError) as error:
             self.failed(error)
             return
-        self.apply.setEnabled(False)
-        self.phase.setEnabled(False)
-        self.reset.setEnabled(False)
+        self.applied=True
         self.swap.setEnabled(False)
         self.mirror.setEnabled(False)
-        self.reverse.setEnabled(False)
-        self.hole_table.setEnabled(False)
-        self.applied=True
-        self.preview.set_editable(False)
-        self.remove_pair.setEnabled(False)
-        self.clear_pairs.setEnabled(False)
-        self.pair_hint.setText('预览已应用。如需继续编辑，请重新读取选区。')
-        self.status.setText('已应用到 B。可用 Max 撤销。')
+        self.force_unmatched.setEnabled(False)
+        self.contour_table.setEnabled(False)
+        self.update_controls()
+        self.refresh_preview()
+        self.status.setText('可用 Max 撤销。')
 
 
 def show():
