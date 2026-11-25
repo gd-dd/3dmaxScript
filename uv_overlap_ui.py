@@ -118,7 +118,7 @@ class Window(QDialog):
         controls.addStretch()
         self.show_bridges=QCheckBox('显示桥接')
         self.show_bridges.setChecked(True)
-        self.show_bridges.toggled.connect(self.render)
+        self.show_bridges.toggled.connect(self.inspect_hole)
         controls.addWidget(self.show_bridges)
         self.preview=Preview()
         self.preview.edgePicked.connect(self.pick_edge)
@@ -141,7 +141,17 @@ class Window(QDialog):
         self.holes=QWidget()
         hole_layout=QVBoxLayout(self.holes)
         hole_layout.setContentsMargins(0,0,0,0)
-        hole_layout.addWidget(QLabel('孔洞配对 · 按左侧预览编号选择，默认自动'))
+        hole_bar=QHBoxLayout()
+        hole_bar.addWidget(QLabel('孔洞配对'))
+        self.hole_view=QComboBox()
+        self.hole_view.setAccessibleName('查看单个孔洞')
+        self.hole_view.setToolTip('单独比较对应孔或未配对的孔')
+        self.hole_view.addItem('查看外圈与全部孔洞',None)
+        self.hole_view.currentIndexChanged.connect(self.hole_choice_changed)
+        hole_bar.addStretch()
+        hole_bar.addWidget(QLabel('单孔预览'))
+        hole_bar.addWidget(self.hole_view)
+        hole_layout.addLayout(hole_bar)
         self.hole_table=QTableWidget(0,2)
         self.hole_table.setHorizontalHeaderLabels(['A 固定孔','B 对应孔'])
         self.hole_table.horizontalHeader().setStretchLastSection(True)
@@ -158,7 +168,7 @@ class Window(QDialog):
         layout.addWidget(self.status)
         bottom=QHBoxLayout()
         layout.addLayout(bottom)
-        legend=QLabel('桥接仅用于预览 · 应用后可以撤销')
+        legend=QLabel('按住拖动预览块，松开复位 · 应用后可以撤销')
         bottom.addWidget(legend,1)
         self.button(bottom,'关闭',self.close)
         self.apply=self.button(bottom,'应用到 UV 编辑器',self.commit)
@@ -233,7 +243,7 @@ class Window(QDialog):
             self.failed(error)
 
     def pick_edge(self, side, index):
-        if self.plan is None or self.applied:
+        if self.plan is None or self.applied or self.hole_view.currentData() is not None:
             return
         if side not in ('a','b') or not 0 <= index < len(getattr(self.plan,side)):
             return
@@ -278,6 +288,10 @@ class Window(QDialog):
     def setup_holes(self,preserve_holes):
         previous = ([self.hole_table.cellWidget(a,1).currentData()
                      for a in range(self.hole_table.rowCount())] if preserve_holes else [])
+        if not preserve_holes:
+            self.hole_view.blockSignals(True)
+            self.hole_view.setCurrentIndex(0)
+            self.hole_view.blockSignals(False)
         a_count=len(self.plan.a_holes)
         b_count=len(self.plan.b_holes)
         self.holes.setVisible(bool(a_count or b_count))
@@ -314,6 +328,67 @@ class Window(QDialog):
                     other.blockSignals(False)
         self.render()
 
+    def hole_choice_changed(self,*_):
+        if self.hole_view.currentData() is not None:
+            self.pending_edge=None
+            self.match_notice=''
+        self.inspect_hole()
+
+    def inspect_hole(self,*_):
+        if self.plan is None:
+            return
+        if self.applied:
+            self.update_preview(self.phase.value(),self.result)
+        else:
+            self.render()
+
+    def refresh_hole_views(self,pairs):
+        current=self.hole_view.currentData()
+        values=[]
+        for a in range(len(self.plan.a_holes)):
+            b=pairs.get(a)
+            label=f'A 孔 {a+1} ↔ B 孔 {b+1}' if b is not None else f'A 孔 {a+1} · 未配对'
+            values.append((label,(a,b)))
+        used=set(pairs.values())
+        for b in range(len(self.plan.b_holes)):
+            if b not in used:
+                values.append((f'B 孔 {b+1} · 未配对',(None,b)))
+        self.hole_view.blockSignals(True)
+        try:
+            self.hole_view.clear()
+            self.hole_view.addItem('查看外圈与全部孔洞',None)
+            selected=0
+            for label,pair in values:
+                self.hole_view.addItem(label,pair)
+                if current is not None and (pair==current or
+                    (current[0] is not None and current[0]==pair[0]) or
+                    (current[0] is None and current[1]==pair[1])):
+                    selected=self.hole_view.count()-1
+            self.hole_view.setCurrentIndex(selected)
+        finally:
+            self.hole_view.blockSignals(False)
+
+    def preview_hole(self, a, b, result):
+        a_ids=self.plan.a_holes[a] if a is not None else []
+        b_ids=self.plan.b_holes[b] if b is not None else []
+        a_loop=[self.points[i] for i in a_ids]
+        b_loop=[self.points[i] for i in b_ids]
+        moved=[result[i] for i in b_ids] if result and b_ids else []
+        links=[]
+        if a_loop and moved:
+            step=max(1,(len(b_loop)+7)//8)
+            for i in range(0,len(b_loop),step):
+                j=(i+1)%len(b_loop)
+                links.append(((moved[i],moved[j]),(b_loop[i],b_loop[j])))
+        titles=(f'A 固定孔 {a+1}' if a is not None else 'A 无对应孔',
+                f'B 移动孔 {b+1}' if b is not None else 'B 无对应孔',
+                '孔洞重叠预览')
+        self.preview.set_editable(False)
+        self.preview.set_scene([a_loop] if a_loop else [],[b_loop] if b_loop else [],
+                               a_loop,b_loop,[moved] if moved else None,(),
+                               show_bridges=self.show_bridges.isChecked(),
+                               titles=titles,point_links=links)
+
     def preview_links(self, phase):
         outer=self.plan.boundary
         direction=outer.direction
@@ -330,6 +405,11 @@ class Window(QDialog):
                 for i in range(0,count,step)]
 
     def update_preview(self, phase, result):
+        focused=self.hole_view.currentData()
+        if focused is not None:
+            self.preview_hole(*focused,result)
+            return
+        self.preview.set_editable(not self.applied)
         a,b=self.groups
         def layer(faces,points):
             return [[points[i] for i in face] for face in faces]
@@ -384,6 +464,16 @@ class Window(QDialog):
             self.status.setText(str(error))
             return
         pairs=self.plan.matched
+        self.refresh_hole_views(pairs)
+        focused=self.hole_view.currentData()
+        if focused is not None:
+            self.remove_pair.setEnabled(False)
+            self.clear_pairs.setEnabled(False)
+            self.pair_hint.setText('正在查看这一对孔洞。可在下面更换对应孔。' if None not in focused
+                                   else '正在查看未配对的孔洞。')
+            self.apply.setToolTip('应用会更新 B 的整块 UV，单孔视图用于检查配对。')
+        else:
+            self.apply.setToolTip('只更新 B 的 UV 坐标。')
         for a in range(self.hole_table.rowCount()):
             choice=self.hole_table.cellWidget(a,1)
             choice.setItemText(0,f'自动（B{pairs[a]+1}）' if a in pairs and a not in overrides else '自动')
@@ -406,7 +496,6 @@ class Window(QDialog):
         self.swap.setEnabled(False)
         self.mirror.setEnabled(False)
         self.reverse.setEnabled(False)
-        self.show_bridges.setEnabled(False)
         self.hole_table.setEnabled(False)
         self.applied=True
         self.preview.set_editable(False)

@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "管理 Max 实例，在 Max 内完成骨骼、蒙皮、权重与表情流程。",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -34,7 +34,7 @@
     "自定义公式关键帧.ms": "a1cdc7aca71f9906f757d172eb75dba5a16da503bd849e74cff1b4c54c0fb851",
     ".lxtool/icon.png": "ad4088b8e786172e357797ca93f37dc7f5097b509dc99904ef5cae534f56ddeb",
     ".lxtool/panel.json": "7692bf6b7411a17ce635ee3243bcc00f568686e5ecaddf0d0d304d675286fee3",
-    ".lxtool/README.md": "8646c00dabe35bfd6be0042d36647c6393d70e4c952788a98f3cd1cca40827f2",
+    ".lxtool/README.md": "152e00e7181ade3ef99dacfac4ce09b23b7854164ad75a61573af77113ae0409",
     "bridge/LXMaxBridge.ms": "cb4bd00888b7dcf8a46a0ef7f916a00ed59801e585ebf153e2ff0a83c06c7b66",
     "bin/LXMaxSession.exe": "47def63076ccaea9bf684f7cbe67e2c4834678a3f588fc9a0fca0c90af9aa373",
     "ui/panel.py": "e532e5aff1d3873c7e0cec52ff3701a9e886dd98d415efa94788b7b71a4c2007",
@@ -104,10 +104,10 @@
     "LX_UVOverlap.ms": "4177818ea177d45efee1c291bfe7a26b079c937e9c94aa9ea4323edf7929545d",
     "bridge/open_uv_overlap.py": "2ea0dbac1d45eeb36121aec4ff6106ed5e7a9eaf4fe6f52137aba9b23a597ae2",
     "uv_overlap.py": "84e7873d71db5448c6a8ae356e2ba5dc3e1f20547bc0e1b3f2cb7bded350c222",
-    "uv_overlap_ui.py": "5c83f838635349507fba76b46b440fffad6a4d4b4f46df0ccfafc9a24bff7938",
-    "uv_overlap_preview.py": "92846c3c5ba1e0a60697d338b71306cac7b648d1f8ba710299ca131fad544db0"
+    "uv_overlap_ui.py": "9068cc7e596364ce921e9cdea99331bbee335ea3df17e4bd5cb96da6aeff380b",
+    "uv_overlap_preview.py": "7f7a14b22bbd034aa52121559d4bf1ea4367d69d1b5f94f1c79fd332630cbfad"
   },
-  "releaseNotes": "UV 重叠支持从点、边或面识别整块。外圈自动匹配有歧义或边数不同时，可直接点选预览中的对应边，用编号临时桥接观察端点，并实时查看对齐效果。支持孔洞、相位和撤销。",
+  "releaseNotes": "UV 重叠新增可拖动的临时预览，桥线随原始块移动，松开即复位；重叠区可单独拉开 B。支持逐孔查看已配对或未配对的孔洞及端点桥接。点、边或面选区均可识别整块。",
   "publishedAt": "2026-11-26",
   "minClientVersion": "0.0.2"
 }

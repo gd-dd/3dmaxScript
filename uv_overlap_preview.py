@@ -1,17 +1,20 @@
 """Draw and pick UV correspondences without changing Max scene data."""
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 _COLORS = {'a': '#487734', 'b': '#ad571e'}
 _LINK_COLORS = ('#7143a2', '#126e91', '#a83459', '#276c63',
                 '#81571a', '#455db3', '#963882', '#43622c')
 _HIT_RADIUS = 10
+_DEFAULT_TITLES = ('A  固定块', 'B  移动块', '重叠预览')
 
 
 def _project(rect, geometry):
     points = [p for face in geometry for p in face]
+    if not points:
+        return None
     lo_x = min(p.real for p in points)
     hi_x = max(p.real for p in points)
     lo_y = min(p.imag for p in points)
@@ -58,16 +61,23 @@ class Preview(QWidget):
         super().__init__(parent)
         self.setMinimumSize(435, 260)
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._press = None
+        self._drag_target = None
+        self._drag_delta = QPointF()
         self.setAccessibleName('UV 边配对和重叠预览')
-        self.setAccessibleDescription('点击 A 和 B 的外边界建立配对。编号相同的边由临时桥线连接。')
+        self.setAccessibleDescription('点击外边界配对。拖动原始 A、原始 B 或重叠中的 B 查看，松手回到原位。')
         self._editable = True
         self.clear_scene()
 
     def clear_scene(self):
+        self._cancel_drag()
         self._scene = None
         self._layout = None
         self._hover = None
         self._links = ()
+        self._point_links = ()
+        self._titles = _DEFAULT_TITLES
         self._pending = None
         self._show_bridges = True
         self.unsetCursor()
@@ -81,15 +91,19 @@ class Preview(QWidget):
         self.update()
 
     def set_scene(self, a_faces, b_faces, a_loop, b_loop, output, links,
-                  pending=None, labels=(), show_bridges=True):
+                  pending=None, labels=(), show_bridges=True, titles=None, point_links=()):
+        self._cancel_drag()
         self._scene = (a_faces, b_faces, a_loop, b_loop, output, labels)
         self._links = tuple(links)
+        self._point_links = tuple(point_links)
+        self._titles = titles or _DEFAULT_TITLES
         self._pending = pending
         self._show_bridges = show_bridges
         self._layout = None
         self.update()
 
     def resizeEvent(self, event):
+        self._cancel_drag()
         self._layout = None
         super().resizeEvent(event)
 
@@ -106,13 +120,15 @@ class Preview(QWidget):
             'result': QRectF(7.+width*.697, 7., width*.303, height),
         }
         layouts = {}
+        self._projects = {}
         for side, faces, loop in (('a', a_faces, a_loop), ('b', b_faces, b_loop)):
             box = panels[side]
             project = _project(box.adjusted(17., 48., -17., -32.), faces)
-            rim = [project(p) for p in loop]
+            self._projects[side] = project
+            rim = [project(p) for p in loop] if project else []
             edges = list(zip(rim, rim[1:]+rim[:1]))
             hole_labels = [(project(p), color, name) for p,color,name in labels
-                           if name.lower().startswith(side)]
+                           if project and name.lower().startswith(side)]
             layouts[side] = (box, _paths(faces, project), edges, hole_labels)
         box = panels['result']
         project = _project(box.adjusted(15., 48., -15., -30.),
@@ -127,16 +143,46 @@ class Preview(QWidget):
         if self._layout is None or side not in _COLORS:
             return None
         edges = self._layout[side][2]
-        return edges[index] if 0 <= index < len(edges) else None
+        if not 0 <= index < len(edges):
+            return None
+        offset = self.drag_offset(side)
+        start,end = edges[index]
+        return start+offset,end+offset
 
-    def _pairs(self):
-        for index, pair in enumerate(self._links, 1):
+    def drag_offset(self, side):
+        """Return a copy of the temporary pixel translation for a visible block."""
+        return QPointF(self._drag_delta) if self._drag_target == side else QPointF()
+
+    def overlap_bounds(self, side):
+        """Return displayed bounds for fixed A or moved B in the overlap preview."""
+        self._prepare_layout()
+        if self._layout is None or side not in ('a', 'b'):
+            return None
+        path = self._layout['result'][1 if side == 'a' else 2]
+        if path is None or path.isEmpty():
+            return None
+        offset = self.drag_offset('result') if side == 'b' else QPointF()
+        return path.boundingRect().translated(offset)
+
+    def _paired_edges(self):
+        for pair in self._links:
             a, b, *direction = pair
             edge_a, edge_b = self.edge_points('a', a), self.edge_points('b', b)
-            if edge_a is None or edge_b is None:
-                continue
-            mapped_b = edge_b[::-1] if direction and direction[0] == -1 else edge_b
-            yield index, _LINK_COLORS[(index-1)%len(_LINK_COLORS)], edge_a, mapped_b
+            if edge_a is not None and edge_b is not None:
+                yield edge_a, edge_b[::-1] if direction and direction[0] == -1 else edge_b
+        self._prepare_layout()
+        if not self._point_links or self._layout is None:
+            return
+        project_a,project_b = self._projects['a'],self._projects['b']
+        if not project_a or not project_b:
+            return
+        offset_a,offset_b = self.drag_offset('a'),self.drag_offset('b')
+        for a,b in self._point_links:
+            yield tuple(project_a(point)+offset_a for point in a), tuple(project_b(point)+offset_b for point in b)
+
+    def _pairs(self):
+        for index,(a,b) in enumerate(self._paired_edges(), 1):
+            yield index, _LINK_COLORS[(index-1)%len(_LINK_COLORS)], a, b
 
     def bridge_segments(self):
         """Return the endpoint links currently displayed by the preview."""
@@ -158,30 +204,111 @@ class Preview(QWidget):
                     return side, index
         return None
 
-    def mouseMoveEvent(self, event):
-        hovered = self._hit(event.position())
-        if hovered != self._hover:
-            self._hover = hovered
-            if hovered:
-                self.setCursor(Qt.CursorShape.PointingHandCursor)
-            else:
-                self.unsetCursor()
-            self.update()
-        super().mouseMoveEvent(event)
+    def _drag_hit(self, point, picked=None):
+        self._prepare_layout()
+        if self._layout is None:
+            return None
+        if picked:
+            return picked[0]
+        for side in ('a', 'b', 'result'):
+            box, path, *_ = self._layout[side]
+            if side == 'result':
+                path = self._layout[side][2]
+            if path is not None and not path.isEmpty() and box.contains(point) and path.boundingRect().adjusted(
+                    -_HIT_RADIUS, -_HIT_RADIUS, _HIT_RADIUS, _HIT_RADIUS).contains(point):
+                return side
+        return None
 
-    def leaveEvent(self, event):
+    def _cancel_drag(self):
+        if self._press is None:
+            return
+        self._press = None
+        self._drag_target = None
+        self._drag_delta = QPointF()
         self._hover = None
         self.unsetCursor()
         self.update()
+
+    def _track_pointer(self, point):
+        hovered = self._hit(point)
+        if hovered:
+            cursor = Qt.CursorShape.PointingHandCursor
+        elif self._drag_hit(point):
+            cursor = Qt.CursorShape.OpenHandCursor
+        else:
+            cursor = Qt.CursorShape.ArrowCursor
+        if self.cursor().shape() != cursor:
+            self.setCursor(cursor)
+        if hovered != self._hover:
+            self._hover = hovered
+            self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._press is not None:
+            start, side, _ = self._press
+            offset = event.position()-start
+            if self._drag_target or offset.manhattanLength() >= QApplication.startDragDistance():
+                self._drag_target = side
+                self._drag_delta = offset
+                self._hover = None
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.update()
+            event.accept()
+            return
+        self._track_pointer(event.position())
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        if self._press is None:
+            self._hover = None
+            self.unsetCursor()
+            self.update()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
-        picked = self._hit(event.position()) if event.button() == Qt.MouseButton.LeftButton else None
-        if picked:
-            self.edgePicked.emit(*picked)
+        if event.button() == Qt.MouseButton.LeftButton:
+            point = event.position()
+            picked = self._hit(point)
+            side = self._drag_hit(point, picked)
+            if side:
+                self.setFocus(Qt.FocusReason.MouseFocusReason)
+                self._press = (point, side, picked)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._press is not None:
+            start, _, picked = self._press
+            stays_click = self._drag_target is None and (
+                event.position()-start).manhattanLength() < QApplication.startDragDistance()
+            self._cancel_drag()
+            if stays_click and self._editable and picked:
+                self.edgePicked.emit(*picked)
+            self._track_pointer(event.position())
             event.accept()
-        else:
-            super().mousePressEvent(event)
+            return
+        super().mouseReleaseEvent(event)
+
+    def event(self, event):
+        if getattr(self,'_press',None) is not None:
+            if event.type() == QEvent.Type.ShortcutOverride and event.key() == Qt.Key.Key_Escape:
+                event.accept()
+                return True
+            if event.type() in (QEvent.Type.Hide, QEvent.Type.WindowDeactivate, QEvent.Type.UngrabMouse):
+                self._cancel_drag()
+        return super().event(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self._press is not None:
+            self._cancel_drag()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def focusOutEvent(self, event):
+        self._cancel_drag()
+        super().focusOutEvent(event)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -193,7 +320,7 @@ class Preview(QWidget):
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
                              '从两个 UV 块各选任意点、边或面，再读取选区')
             return
-        for side, title in (('a','A  固定块'), ('b','B  移动块'), ('result','重叠预览')):
+        for side,title in zip(('a','b','result'),self._titles):
             box = self._layout[side][0]
             color = _COLORS.get(side, '#365347')
             painter.setPen(_pen('#d5e1d2', 1.))
@@ -206,8 +333,11 @@ class Preview(QWidget):
             painter.drawText(box.adjusted(12., 4., -8., 0.).topLeft()+QPointF(0., 17.), title)
             font.setBold(False)
             painter.setFont(font)
-        self._draw_source(painter, 'a')
-        self._draw_source(painter, 'b')
+        for side in ('a','b'):
+            if self._drag_target != side:
+                self._draw_source(painter, side)
+        if self._drag_target in ('a','b'):
+            self._draw_source(painter, self._drag_target)
         self._draw_result(painter)
         self._draw_pairs(painter)
         self._draw_pick(painter, self._hover, False)
@@ -216,16 +346,24 @@ class Preview(QWidget):
     def _draw_source(self, painter, side):
         box, mesh, edges, labels = self._layout[side]
         color = _COLORS[side]
+        if mesh.isEmpty():
+            painter.setPen(QColor('#506452'))
+            painter.drawText(box,Qt.AlignmentFlag.AlignCenter,'该侧无对应孔')
+            return
         faint = QColor(color)
         faint.setAlpha(120)
         painter.setPen(_pen(faint, 1.))
         painter.setBrush(Qt.BrushStyle.NoBrush)
+        offset = self.drag_offset(side)
+        painter.save()
+        painter.translate(offset)
         painter.drawPath(mesh)
         painter.setPen(_pen(color, 2.2))
         for a,b in edges:
             painter.drawLine(a,b)
+        painter.restore()
         for point, label_color, label in labels:
-            self._chip(painter, point, label, label_color, [])
+            self._chip(painter, point+offset, label, label_color, [])
 
     def _draw_result(self, painter):
         box, fixed, moved = self._layout['result']
@@ -233,17 +371,22 @@ class Preview(QWidget):
         painter.setPen(_pen(_COLORS['a'], 1.55))
         painter.drawPath(fixed)
         if moved is not None:
+            painter.save()
+            painter.setClipRect(box.adjusted(2., 31., -2., -24.))
+            painter.translate(self.drag_offset('result'))
             painter.setPen(_pen(_COLORS['b'], 1.45, Qt.PenStyle.DashLine))
             painter.drawPath(moved)
+            painter.restore()
             painter.setPen(QColor('#506452'))
             painter.drawText(box.adjusted(9., 0., -9., -8.),
                              Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignBottom,
                              'A 实线    B 虚线')
         else:
             painter.setPen(QColor('#506452'))
+            both_sides = self._projects['a'] is not None and self._projects['b'] is not None
             painter.drawText(box.adjusted(8., 0., -8., -8.),
                              Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignBottom,
-                             '等待确定对应边')
+                             '等待确定对应边' if both_sides else '未配对')
 
     def _draw_pairs(self, painter):
         used = []
@@ -277,7 +420,7 @@ class Preview(QWidget):
             if self._show_bridges:
                 center_x = 7.+(self.width()-14.)*.333
                 distance = midpoint_b.x()-midpoint_a.x()
-                t = (center_x-midpoint_a.x())/distance if distance else .5
+                t = max(0., min(1., (center_x-midpoint_a.x())/distance)) if distance else .5
                 center_y = midpoint_a.y()+(midpoint_b.y()-midpoint_a.y())*t
                 self._chip(painter,QPointF(center_x,center_y),str(index),color,used)
             else:
