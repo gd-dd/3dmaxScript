@@ -80,19 +80,6 @@ def ordered_loops(loops, positions):
     return sorted(loops, key=lambda loop: -abs(area([positions[i] for i in loop])))
 
 
-def boundary_selection(groups, vertices, positions, edge_count=None):
-    expected = set()
-    for group in groups:
-        loops, _ = topology(group)
-        outer = ordered_loops(loops, positions)[0]
-        if not set(outer) <= vertices:
-            raise ValueError('外边界未选完整。请在每个块上选中整圈外边界。')
-        expected.update(outer)
-    if expected != vertices or edge_count is not None and edge_count != len(expected):
-        raise ValueError('请只选两圈完整外边界。孔洞在预览中自动匹配，也可以手动指定。')
-    return groups
-
-
 def perimeter(points):
     lengths = [0.]
     for a, b in zip(points, points[1:] + points[:1]):
@@ -168,29 +155,79 @@ class Boundary:
             return error if extra_score is None else error+extra_score(move)
         self.corner_mode = not self.equal and paired_corners
         self.phases = len(self.target_corners) if self.corner_mode else len(self.a)
-        self.start = min(choices,key=score)
+        ranked = sorted((score(start), start) for start in choices)
+        best, self.start = ranked[0]
+        span = max(abs(p-self.target[0]) for p in self.target)
+        self.ambiguous = len(ranked)>1 and ranked[1][0]-best <= max((.003*span)**2, .04*best)
 
-    def mapping(self, phase):
+    def interpolate(self, anchors, direction):
+        span_count = len(self.b)
+        parameters = [0.]*span_count
+        for (b,a),(next_b,next_a) in zip(anchors,anchors[1:]+[(anchors[0][0]+span_count,anchors[0][1])]):
+            start = self.arcs[a]
+            span = ((self.arcs[next_a]-start)*direction)%1
+            from_arc = self.source_arcs[b]
+            to_arc = self.source_arcs[next_b%span_count]+next_b//span_count
+            parameters[b] = start
+            for i in range(b+1,next_b):
+                distance = self.source_arcs[i%span_count]+i//span_count-from_arc
+                parameters[i%span_count] = start+direction*span*distance/(to_arc-from_arc)
+        return parameters
+
+    def manual_parameters(self, edge_pairs, direction):
+        a_count, b_count = len(self.a), len(self.b)
+        anchors = {}
+        reverse = {}
+        for a,b in edge_pairs:
+            if not (0<=a<a_count and 0<=b<b_count):
+                raise ValueError('所选边不在当前外边界上。')
+            endpoints = (a,(a+1)%a_count)
+            if direction < 0:
+                endpoints = endpoints[::-1]
+            for b_vertex,a_vertex in zip((b,(b+1)%b_count),endpoints):
+                if anchors.get(b_vertex,a_vertex)!=a_vertex or reverse.get(a_vertex,b_vertex)!=b_vertex:
+                    raise ValueError('配对边共用端点，但对应点不同。请调整边对或切换端点方向。')
+                anchors[b_vertex] = a_vertex
+                reverse[a_vertex] = b_vertex
+        if self.equal:
+            shifts = {(a-direction*b)%a_count for b,a in anchors.items()}
+            if len(shifts)!=1:
+                raise ValueError('两圈边数相同，配对需使用同一个相位。请调整边对或切换端点方向。')
+            start = shifts.pop()
+            target = [(start+direction*i)%a_count for i in range(b_count)]
+            anchors = dict(enumerate(target))
+            parameters = [self.arcs[a] for a in target]
+        else:
+            ordered = sorted(anchors.items())
+            around = [a for _,a in ordered]
+            spans = [((right-left)*direction)%a_count
+                     for left,right in zip(around,around[1:]+around[:1])]
+            if sum(spans)!=a_count:
+                raise ValueError('配对的顺序交叉。请沿两圈边界按同一顺序配对。')
+            parameters = self.interpolate(ordered,direction)
+        linked = {self.b[b]:self.a[a] for b,a in anchors.items()}
+        return parameters, linked, direction
+
+    def parameters(self, phase, edge_pairs=(), flip_pairs=False):
+        direction = -self.direction if edge_pairs and flip_pairs else self.direction
+        if edge_pairs:
+            return self.manual_parameters(edge_pairs,direction)
         start = (self.start+phase)%self.phases
         if self.equal:
-            rim = [self.target[(start+self.direction*i)%len(self.a)] for i in range(len(self.b))]
-        elif self.corner_mode:
-            anchors = self.source_corners+[self.source_corners[0]+len(self.b)]
-            rim = [0j]*len(self.b)
-            for i,(lo,hi) in enumerate(zip(anchors,anchors[1:])):
-                left = self.target_corners[(start+self.direction*i)%self.phases]
-                right = self.target_corners[(start+self.direction*(i+1))%self.phases]
-                span = ((self.arcs[right]-self.arcs[left])*self.direction)%1
-                arc = lambda j: self.source_arcs[j%len(self.b)]+j//len(self.b)
-                for j in range(lo,hi):
-                    t = (arc(j)-arc(lo))/(arc(hi)-arc(lo))
-                    rim[j%len(self.b)] = sample(self.target,self.arcs,self.arcs[left]+self.direction*span*t)
-        else:
-            rim = [sample(self.target,self.arcs,self.arcs[start]+self.direction*t) for t in self.source_arcs[:-1]]
-        linked = (dict(zip(self.b, (self.a[(start+self.direction*i)%len(self.a)]
-                                   for i in range(len(self.b))))) if self.equal else {})
-        return dict(zip(self.b, rim)), linked
+            vertices = [(start+direction*i)%len(self.a) for i in range(len(self.b))]
+            linked = dict(zip(self.b,(self.a[i] for i in vertices)))
+            return [self.arcs[i] for i in vertices], linked, direction
+        if self.corner_mode:
+            anchors = [(b,self.target_corners[(start+direction*i)%self.phases])
+                       for i,b in enumerate(self.source_corners)]
+            return self.interpolate(anchors,direction), {}, direction
+        return [self.arcs[start]+direction*t for t in self.source_arcs[:-1]], {}, direction
 
+    def mapping(self, phase, edge_pairs=(), flip_pairs=False):
+        parameters, linked, _ = self.parameters(phase,edge_pairs,flip_pairs)
+        target_by_vertex = dict(zip(self.a,self.target))
+        return ({b:target_by_vertex[linked[b]] if b in linked else sample(self.target,self.arcs,t)
+                 for b,t in zip(self.b,parameters)}, linked)
 
 def loop_center(points):
     total = 0j
@@ -220,6 +257,7 @@ class Alignment:
         self.boundary = Boundary(positions, self.a, self.b, mirror, extra_score=self.hole_score)
         self.phases = self.boundary.phases
         self.equal = self.boundary.equal
+        self.ambiguous = self.boundary.ambiguous
         self.reference = None
         self.hole_boundaries = {}
 
@@ -242,18 +280,24 @@ class Alignment:
                 occupied.add(b)
         return {a:b for a,b in pairs.items() if b is not None}
 
-    def result(self, phase, overrides=None):
+    def validate_edge_pairs(self, edge_pairs, flip_pairs=False):
+        self.boundary.parameters(0,edge_pairs,flip_pairs)
+
+    def result(self, phase, overrides=None, edge_pairs=(), flip_pairs=False):
         outer = self.boundary
-        boundary, linked = outer.mapping(phase)
-        move = fit(outer.source,[boundary[i] for i in self.b],self.mirror)
-        if self.reference != phase:
-            self.reference = phase
+        edge_pairs = tuple(edge_pairs)
+        mirror = self.mirror != bool(edge_pairs and flip_pairs)
+        boundary, linked = outer.mapping(phase,edge_pairs,flip_pairs)
+        move = fit(outer.source,[boundary[i] for i in self.b],mirror)
+        reference = (None if edge_pairs else phase,edge_pairs,mirror)
+        if self.reference != reference:
+            self.reference = reference
             self.hole_boundaries.clear()
         self.matched = self.pairs(move, overrides or {})
         for a,b in self.matched.items():
             if (a,b) not in self.hole_boundaries:
                 self.hole_boundaries[a,b] = Boundary(self.positions,self.a_holes[a],
-                                                      self.b_holes[b],self.mirror,reference=move)
+                                                      self.b_holes[b],mirror,reference=move)
             rim, correspondence = self.hole_boundaries[a,b].mapping(0)
             boundary.update(rim)
             linked.update(correspondence)

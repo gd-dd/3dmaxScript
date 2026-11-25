@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "管理 Max 实例，在 Max 内完成骨骼、蒙皮、权重与表情流程。",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -34,7 +34,7 @@
     "自定义公式关键帧.ms": "a1cdc7aca71f9906f757d172eb75dba5a16da503bd849e74cff1b4c54c0fb851",
     ".lxtool/icon.png": "ad4088b8e786172e357797ca93f37dc7f5097b509dc99904ef5cae534f56ddeb",
     ".lxtool/panel.json": "7692bf6b7411a17ce635ee3243bcc00f568686e5ecaddf0d0d304d675286fee3",
-    ".lxtool/README.md": "17c017e7c68b03d5e5a306283ed17b7216f1503b98ba341ddc09224d2f33ae4d",
+    ".lxtool/README.md": "8646c00dabe35bfd6be0042d36647c6393d70e4c952788a98f3cd1cca40827f2",
     "bridge/LXMaxBridge.ms": "cb4bd00888b7dcf8a46a0ef7f916a00ed59801e585ebf153e2ff0a83c06c7b66",
     "bin/LXMaxSession.exe": "47def63076ccaea9bf684f7cbe67e2c4834678a3f588fc9a0fca0c90af9aa373",
     "ui/panel.py": "e532e5aff1d3873c7e0cec52ff3701a9e886dd98d415efa94788b7b71a4c2007",
@@ -102,11 +102,12 @@
     "retarget/TODO.md": "21489df88184e11f397e96343a15dbc47a83626b37f55289649994fe487578da",
     "bridge/auto_connect.ms": "be9b55b4c38dc5c2c46e962f5639cbc0495bd0b56f7ad0026856f2501947e3f9",
     "LX_UVOverlap.ms": "4177818ea177d45efee1c291bfe7a26b079c937e9c94aa9ea4323edf7929545d",
-    "bridge/open_uv_overlap.py": "7c87e6ed1a27fd57f869568b5856a4163a63ce5fdaeef1803e73ad246c7cf5eb",
-    "uv_overlap.py": "2c873158e27596603dc8a6aa344d96a9901accf5556e89ca50207ee9c7ceb065",
-    "uv_overlap_ui.py": "1ba7487f0cf957b142351554dcc94fdfa29495691c3053e84c56cb55f3279ece"
+    "bridge/open_uv_overlap.py": "2ea0dbac1d45eeb36121aec4ff6106ed5e7a9eaf4fe6f52137aba9b23a597ae2",
+    "uv_overlap.py": "84e7873d71db5448c6a8ae356e2ba5dc3e1f20547bc0e1b3f2cb7bded350c222",
+    "uv_overlap_ui.py": "5c83f838635349507fba76b46b440fffad6a4d4b4f46df0ccfafc9a24bff7938",
+    "uv_overlap_preview.py": "92846c3c5ba1e0a60697d338b71306cac7b648d1f8ba710299ca131fad544db0"
   },
-  "releaseNotes": "UV 重叠支持带孔的 UV 块。各选一圈外边界即可对齐；孔洞默认自动配对，也可在预览中手动指定对应孔或跳过。相位实时更新，应用后可撤销。",
+  "releaseNotes": "UV 重叠支持从点、边或面识别整块。外圈自动匹配有歧义或边数不同时，可直接点选预览中的对应边，用编号临时桥接观察端点，并实时查看对齐效果。支持孔洞、相位和撤销。",
   "publishedAt": "2026-11-26",
   "minClientVersion": "0.0.2"
 }

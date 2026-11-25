@@ -1,6 +1,6 @@
 import unittest
 
-from uv_overlap import Alignment, boundary_selection, islands
+from uv_overlap import Alignment, islands
 
 
 class UVOverlapTests(unittest.TestCase):
@@ -46,14 +46,6 @@ class UVOverlapTests(unittest.TestCase):
         holes = {(1,1),(3,2)}
         points,a,b = self.ring_grid(holes,holes)
         plan = Alignment(points,a,b)
-        border = set(plan.a+plan.b)
-        self.assertEqual(boundary_selection([a,b],border,points,len(border)),[a,b])
-        with self.assertRaisesRegex(ValueError,'未选完整'):
-            boundary_selection([a,b],border-{plan.b[0]},points)
-        with self.assertRaisesRegex(ValueError,'只选两圈'):
-            boundary_selection([a,b],border,points,len(border)-1)
-        with self.assertRaisesRegex(ValueError,'只选两圈'):
-            boundary_selection([a,b],border|set(plan.a_holes[0]),points)
         result,mode = plan.result(0)
         self.assertEqual(plan.matched,{0:0,1:1})
         self.assertEqual(mode,'逐点重叠')
@@ -90,3 +82,54 @@ class UVOverlapTests(unittest.TestCase):
         self.assertEqual(plan.matched,{0:0})
         self.assertEqual(len(plan.b_holes[0]),5)
         self.assertAlmostEqual(abs(result[mid]-(points[left-30]+points[right-30])/2),0.)
+
+
+    def test_symmetry_is_flagged_and_one_anchor_sets_exact_phase(self):
+        square = [0j, 2+0j, 2+2j, 2j]
+        points = dict(enumerate(square + [point+5 for point in square], 1))
+        plan = Alignment(points,[(1,2,3,4)],[(5,6,7,8)])
+        self.assertTrue(plan.ambiguous)
+        pairs = [(2,0),(3,1)]
+        plan.validate_edge_pairs(pairs)
+        result,mode = plan.result(0,edge_pairs=pairs)
+        self.assertEqual(mode,'逐点重叠')
+        self.assertEqual(result,{5:points[3],6:points[4],7:points[1],8:points[2]})
+        self.assertEqual(result,plan.result(1,edge_pairs=pairs)[0])
+
+    def test_distinct_outline_has_an_unambiguous_auto_match(self):
+        outline = [0j,4+0j,3+2j,1+3j,2j]
+        points = dict(enumerate(outline + [5-2j*value for value in outline], 1))
+        plan = Alignment(points,[(1,2,3,4,5)],[(6,7,8,9,10)])
+        self.assertFalse(plan.ambiguous)
+        self.assertEqual(plan.result(0)[0],{i:points[i-5] for i in range(6,11)})
+        with self.assertRaisesRegex(ValueError,'相位'):
+            plan.validate_edge_pairs([(0,0),(2,3)])
+
+    def test_unequal_outlines_honor_manual_endpoints_and_interpolate(self):
+        points = dict(enumerate([0j,3+0j,3+1j,1j,4j,1+4j,3+4j,3+5j,5j],1))
+        plan = Alignment(points,[(1,2,3,4)],[(5,6,7,8,9)])
+        pairs = [(1,2),(3,4)]
+        result,_ = plan.result(0,edge_pairs=pairs)
+        self.assertEqual([result[i] for i in (5,7,8,9)],[points[i] for i in (1,2,3,4)])
+        self.assertAlmostEqual(abs(result[6]-1),0)
+        with self.assertRaisesRegex(ValueError,'共用端点'):
+            plan.validate_edge_pairs([(0,0),(2,1)])
+
+    def test_reverse_direction_swaps_manually_selected_edge_endpoints(self):
+        outline = [0j,4+0j,3+2j,1+3j,2j]
+        points = dict(enumerate(outline + [value+8 for value in outline],1))
+        plan = Alignment(points,[(1,2,3,4,5)],[(6,7,8,9,10)])
+        pairs = [(1,0)]
+        normal,_ = plan.result(0,edge_pairs=pairs)
+        flipped,_ = plan.result(0,edge_pairs=pairs,flip_pairs=True)
+        self.assertEqual((normal[6],normal[7]),(points[2],points[3]))
+        self.assertEqual((flipped[6],flipped[7]),(points[3],points[2]))
+
+
+    def test_unequal_outlines_reject_crossing_manual_pairs(self):
+        outer = [0j,2+0j,3+1j,2+3j,1+3j,1j]
+        moving = [value+6 for value in outer]+[5+2j,5+1j]
+        points = dict(enumerate(outer+moving,1))
+        plan = Alignment(points,[(1,2,3,4,5,6)],[tuple(range(7,15))])
+        with self.assertRaisesRegex(ValueError,'顺序交叉'):
+            plan.validate_edge_pairs([(0,0),(4,2),(2,4)])

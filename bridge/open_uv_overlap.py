@@ -10,7 +10,9 @@ def open_uv_overlap():
     if previous is not None and isValid(previous):
         previous.close()
     model = runpy.run_path(str(root/'uv_overlap.py'))
-    ui = runpy.run_path(str(root/'uv_overlap_ui.py'), init_globals={'solver': model})
+    preview = runpy.run_path(str(root/'uv_overlap_preview.py'))
+    ui = runpy.run_path(str(root/'uv_overlap_ui.py'),
+                        init_globals={'solver': model, 'Preview': preview['Preview']})
     builtins._lx_uv_overlap = ui['show']()
 
 
