@@ -3,7 +3,7 @@
   "kind": "lx-tool",
   "name": "Max 工具集",
   "description": "管理 Max 实例，在 Max 内完成骨骼、蒙皮、权重与表情流程。",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "category": "DCC 工具",
   "icon": ".lxtool/icon.png",
   "readme": ".lxtool/README.md",
@@ -107,7 +107,7 @@
     "uv_overlap_ui.py": "e7805bf03c95cd45630fe6290b82da210237d302ab976e5a830abc22503759e9",
     "uv_overlap_preview.py": "7764dc70c8006b49832bc46a7d03016b63e0cc523615822cd336c004c1c2c935"
   },
-  "releaseNotes": "UV 重叠新增可拖动的临时预览，桥线随原始块移动，松开即复位；重叠区可单独拉开 B。支持逐孔查看已配对或未配对的孔洞及端点桥接。点、边或面选区均可识别整块。",
+  "releaseNotes": "UV 重叠把外框与孔洞统一为轮廓，可逐圈配边、调相位和查看临时桥接。未配对轮廓会列出编号，可按内部顶点处理。镜像 B 直接显示在预览中，支持拖动和松手复位。",
   "publishedAt": "2026-11-26",
   "minClientVersion": "0.0.2"
 }
